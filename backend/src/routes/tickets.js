@@ -30,38 +30,52 @@ router.get("/", (req, res) => {
   res.json(ticketsWithMessages);
 });
 
-// POST new ticket
+// POST new ticket or merge message
 router.post("/", async (req, res) => {
   const { email, message } = req.body;
   if (!email || !message) {
     return res.status(400).json({ error: "Email & message required" });
   }
 
-  const ticketId = uuid();
-
-  // 1️⃣ Duplicate detection FIRST
-  const similarTicket = db
+  // 1️⃣ Check for duplicate open ticket
+  const existingTicket = db
     .prepare("SELECT * FROM tickets WHERE email = ? AND status != 'closed'")
     .get(email);
 
-  if (similarTicket) {
+  if (existingTicket) {
+    // Insert guest message into existing ticket
+    const messageId = uuid();
     db.prepare(
       "INSERT INTO messages (id, ticket_id, sender, content, status) VALUES (?, ?, ?, ?, ?)"
-    ).run(uuid(), similarTicket.id, "guest", message, "sent");
+    ).run(messageId, existingTicket.id, "guest", message, "sent");
 
     try {
-      await sendTicketEmail(email, similarTicket.id);
+      // 2️⃣ Classify intent for the new message
+      const classification = await classifyIntent(message);
+
+      // 3️⃣ Process this new message with agent routing
+      await processNewGuestMessage(
+        existingTicket.id,
+        message,
+        classification.intent,
+        email,
+        classification.confidence
+      );
+
+      // Send notification to guest about merged message
+      await sendTicketEmail(email, existingTicket.id);
     } catch (err) {
-      console.error("Email failed:", err.message);
+      console.error("Error processing merged message:", err);
     }
 
     return res.json({
-      ticketId: similarTicket.id,
+      ticketId: existingTicket.id,
       message: "Merged with existing ticket",
     });
   }
 
-  // 2️⃣ Classify intent
+  // 4️⃣ Create new ticket
+  const ticketId = uuid();
   let classification;
   try {
     classification = await classifyIntent(message);
@@ -69,9 +83,7 @@ router.post("/", async (req, res) => {
     console.error("Classification failed:", err);
     classification = { intent: "general", confidence: 0, reasoning: "Classification error" };
   }
-// TEMP: Force medium confidence for testing admin approve/edit/reject
-// classification.confidence = 0.6; // forces 'pending' status
-  // 3️⃣ Save ticket
+
   db.prepare(
     "INSERT INTO tickets (id, email, confidence, intent, status) VALUES (?, ?, ?, ?, ?)"
   ).run(ticketId, email, classification.confidence, classification.intent, "open");
@@ -80,32 +92,14 @@ router.post("/", async (req, res) => {
     "INSERT INTO messages (id, ticket_id, sender, content, status) VALUES (?, ?, ?, ?, ?)"
   ).run(uuid(), ticketId, "guest", message, "sent");
 
-  // 4️⃣ Agent routing
-  if (classification.confidence >= 0.8) {
-    const agentResponse = await callAgent(classification.intent, message);
-    saveAgentMessage(ticketId, agentResponse, "sent");
-
-    try {
-      await sendAgentReplyEmail(email, ticketId, agentResponse);
-    } catch (err) {
-      console.error("Agent email failed:", err.message);
-    }
-  } else if (classification.confidence >= 0.5) {
-    const agentResponse = await callAgent(classification.intent, message);
-    saveAgentMessage(ticketId, agentResponse, "pending");
-  } else {
-    saveAgentMessage(
-      ticketId,
-      { response: "Needs admin handling", reasoning: "Low confidence" },
-      "low-confidence"
-    );
-  }
-
-  // 5️⃣ Ticket link email (non-blocking)
   try {
+    // 5️⃣ Process message with agent
+    await processNewGuestMessage(ticketId, message, classification.intent, email, classification.confidence);
+
+    // 6️⃣ Send ticket email to guest
     await sendTicketEmail(email, ticketId);
   } catch (err) {
-    console.error("Ticket email failed:", err.message);
+    console.error("Error processing new ticket:", err);
   }
 
   res.json({ ticketId, classification });
@@ -156,23 +150,38 @@ router.post("/:ticketId/admin-action", async (req, res) => {
 });
 
 // POST guest reply
+// POST guest reply to an existing ticket
 router.post("/:ticketId/messages", async (req, res) => {
   const { ticketId } = req.params;
   const { sender, text } = req.body;
-  
+
   if (!sender || !text) return res.status(400).json({ error: "Sender & text required" });
 
   try {
+    // 1️⃣ Save the guest message
+    const messageId = uuid();
     db.prepare(
       "INSERT INTO messages (id, ticket_id, sender, content, status) VALUES (?, ?, ?, ?, ?)"
-    ).run(uuid(), ticketId, sender, text, "sent");
+    ).run(messageId, ticketId, sender, text, "sent");
 
+    // 2️⃣ Fetch ticket info for email & context
+    const ticket = db.prepare("SELECT * FROM tickets WHERE id = ?").get(ticketId);
+    if (!ticket) return res.status(404).json({ error: "Ticket not found" });
+
+    // 3️⃣ Classify intent of the new message
+    const classification = await classifyIntent(text);
+
+    // 4️⃣ Process the message through AI
+    await processNewGuestMessage(ticketId, text, classification.intent, ticket.email, classification.confidence);
+
+    // 5️⃣ Respond OK
     res.json({ status: "ok" });
   } catch (err) {
-    console.error(err);
+    console.error("Error processing guest reply:", err);
     res.status(500).json({ error: "Failed to save message" });
   }
 });
+
 
 
 // Helper to call agent
@@ -211,3 +220,22 @@ function saveAgentMessage(ticketId, agentResponse, status = "sent") {
 
 
 export default router;
+export async function processNewGuestMessage(ticketId, messageContent, intent, email, confidence) {
+  let status;
+  if (confidence >= 0.8) status = "sent";
+  else if (confidence >= 0.5) status = "pending";
+  else status = "low-confidence";
+
+  // Call agent only if confidence >= 0.5
+  let agentResponse = null;
+  if (confidence >= 0.5) {
+    agentResponse = await callAgent(intent, messageContent);
+    saveAgentMessage(ticketId, agentResponse, status);
+    
+    if (status === "sent") {
+      await sendAgentReplyEmail(email, ticketId, agentResponse);
+    }
+  } else {
+    saveAgentMessage(ticketId, { response: "Needs admin handling", reasoning: "Low confidence" }, status);
+  }
+}

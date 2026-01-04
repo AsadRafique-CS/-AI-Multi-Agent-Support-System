@@ -167,7 +167,7 @@ function App() {
   const [tickets, setTickets] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false); // switch between guest/admin
   const [editText, setEditText] = useState({}); // for admin edits
-
+const [replyText, setReplyText] = useState({});
   useEffect(() => {
     fetchTickets();
   }, []);
@@ -186,13 +186,30 @@ function App() {
 }
       setEmail("");
       setMessage("");
+      // Dynamically fetch updated ticket including agent response
+      const ticketRes = await axios.get(`http://localhost:4000/tickets`);
       fetchTickets();
     } catch (err) {
       console.error(err);
       alert("Failed to submit ticket");
     }
   };
+// Submit guest reply to a ticket
+const submitGuestReply = async (ticketId, text) => {
+  try {
+    await axios.post(`http://localhost:4000/tickets/${ticketId}/messages`, {
+      sender: "guest",
+      text,
+    });
 
+    // Fetch updated tickets to include agent/admin response
+    const ticketRes = await axios.get(`http://localhost:4000/tickets`);
+    setTickets(ticketRes.data);
+  } catch (err) {
+    console.error(err);
+    alert("Failed to send reply");
+  }
+};
   const fetchTickets = async () => {
     try {
       const res = await axios.get("http://localhost:4000/tickets");
@@ -399,6 +416,30 @@ function App() {
 )}
 </div>
                 ))}
+                  {/* Guest reply input */}
+      {!isAdmin && (
+        <div style={{ marginTop: "0.5rem" }}>
+          <input
+            type="text"
+            placeholder="Type your reply..."
+            value={replyText[ticket.id] || ""}
+            onChange={(e) =>
+              setReplyText((prev) => ({ ...prev, [ticket.id]: e.target.value }))
+            }
+            style={{ width: "70%", marginRight: "0.5rem", padding: "0.5rem" }}
+          />
+          <button
+            onClick={() => {
+              if (replyText[ticket.id]?.trim()) {
+                submitGuestReply(ticket.id, replyText[ticket.id].trim());
+                setReplyText((prev) => ({ ...prev, [ticket.id]: "" }));
+              }
+            }}
+          >
+            Send
+          </button>
+        </div>
+      )}
               </div>
             </div>
           </div>
