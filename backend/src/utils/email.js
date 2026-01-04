@@ -58,24 +58,34 @@ export async function sendTicketEmail(email, ticketId) {
 }
 
 export async function sendAgentReplyEmail(email, ticketId, agentResponse) {
-  const ticketLink = `http://localhost:3000/tickets/${ticketId}`;
+  // create a test account
+  const testAccount = await nodemailer.createTestAccount();
 
-  await transporter.sendMail({
-    from: `"AI Support" <${process.env.EMAIL_USER}>`,
+  // create a transporter
+  const transporter = nodemailer.createTransport({
+    host: "smtp.ethereal.email",
+    port: 587,
+    auth: {
+      user: testAccount.user,
+      pass: testAccount.pass,
+    },
+  });
+
+  const ticketLink = `http://localhost:3000/ticket/${ticketId}`;
+
+  const info = await transporter.sendMail({
+    from: '"AI Support" <support@test.com>',
     to: email,
     subject: "Update on Your Support Ticket",
     html: `
       <p>Your ticket has received a response.</p>
-
       <p><b>AI Response:</b></p>
       <blockquote>${agentResponse.response}</blockquote>
-
       <p><i>Reasoning:</i> ${agentResponse.reasoning}</p>
-
-      <p>
-        View full conversation:
-        <a href="${ticketLink}">${ticketLink}</a>
-      </p>
+      <p>View full conversation: <a href="${ticketLink}">${ticketLink}</a></p>
     `,
   });
+
+  console.log("📨 Agent Reply Preview URL:", nodemailer.getTestMessageUrl(info));
 }
+

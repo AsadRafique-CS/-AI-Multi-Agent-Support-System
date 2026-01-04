@@ -290,7 +290,7 @@ function App() {
   style={{
     alignSelf: msg.sender === "guest" ? "flex-start" : "flex-end",
     maxWidth: "70%",
-    border: msg.status === "low-confidence" ? "2px solid red" : "none", // highlight low-confidence
+    border: (msg.status === "low-confidence" || msg.status === "escalated") ? "2px solid red" : "none", // highlight low-confidence and on escalated
     background: msg.sender === "guest" ? "#e0f7fa" : "#fff3e0",
     padding: "0.5rem 1rem",
     borderRadius: "15px",
@@ -300,7 +300,7 @@ function App() {
   <b>{msg.sender}:</b> {msg.content}
 
   {/* Low-confidence badge */}
-  {msg.status === "low-confidence" && (
+  {(msg.status === "low-confidence" || msg.status === "escalated") && (
     <span
       style={{
         position: "absolute",
