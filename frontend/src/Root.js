@@ -1,13 +1,48 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import TicketView from "./TicketView"; // the ticket view page
-import App from "./App"; // your main guest/admin ticket list page
+import TicketView from "./TicketView";
+import App from "./App";
+import Login from "./Login";
+import Signup from "./Signup";
+import AdminLogin from "./AdminLogin";
+import AdminDashboard from "./AdminDashboard";
+import { UserProtectedRoute, AdminProtectedRoute } from "./ProtectedRoute";
 
 export default function Root() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<App />} />
-        <Route path="/ticket/:ticketId" element={<TicketView />} />
+        {/* Public Routes */}
+        <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<Signup />} />
+        <Route path="/admin/login" element={<AdminLogin />} />
+
+        {/* User Protected Routes */}
+        <Route
+          path="/"
+          element={
+            <UserProtectedRoute>
+              <App />
+            </UserProtectedRoute>
+          }
+        />
+        <Route
+          path="/ticket/:ticketId"
+          element={
+            <UserProtectedRoute>
+              <TicketView />
+            </UserProtectedRoute>
+          }
+        />
+
+        {/* Admin Protected Routes */}
+        <Route
+          path="/admin"
+          element={
+            <AdminProtectedRoute>
+              <AdminDashboard />
+            </AdminProtectedRoute>
+          }
+        />
       </Routes>
     </Router>
   );

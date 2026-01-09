@@ -2,7 +2,8 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 
-import ticketsRouter from "./routes/tickets.js"; // <-- import here
+import ticketsRouter from "./routes/tickets.js";
+import authRouter from "./routes/auth.js";
 import './utils/escalator.js';
 
 import { db } from "./db/db.js";
@@ -16,6 +17,9 @@ app.use(express.json());
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
+
+// Use auth router
+app.use("/auth", authRouter);
 
 // Use tickets router
 app.use("/tickets", ticketsRouter);
