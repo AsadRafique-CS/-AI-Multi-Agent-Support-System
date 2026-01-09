@@ -6,9 +6,18 @@ import { db } from "../db/db.js";
 import { sendTicketEmail, sendAgentReplyEmail } from "../utils/email.js";
 const router = express.Router();
 
-// GET all tickets with messages
+// GET all tickets with messages (optionally filtered by email for users)
 router.get("/", (req, res) => {
-  const tickets = db.prepare("SELECT * FROM tickets").all();
+  const { email } = req.query;
+
+  let tickets;
+  if (email) {
+    // Filter tickets by user email
+    tickets = db.prepare("SELECT * FROM tickets WHERE email = ?").all(email.toLowerCase());
+  } else {
+    // Return all tickets (for admin)
+    tickets = db.prepare("SELECT * FROM tickets").all();
+  }
 
   const ticketsWithMessages = tickets.map((ticket) => {
     const messages = db

@@ -1,253 +1,266 @@
-Support Ticket System
+# Support Ticket System
 
-A simple support ticket system with AI-powered agent responses, admin moderation, and guest ticket submission. Built with Node.js, Express, SQLite, and React.
+A full-stack support ticket system with AI-powered agent responses, user authentication, admin moderation, and ticket management. Built with Node.js, Express, SQLite, and React.
 
-Supports features like approve, edit, reject, and reassign agent messages, along with low-confidence escalation and email notifications.
+## Features
 
-⚠️ Note: OpenAI integration is commented out due to limited free-tier access. The system currently uses mock AI agents (RefundAgent, TechnicalAgent, GeneralAgent). You can enable real AI if you have a valid OpenAI API key.
+- **User Authentication**
+  - User signup and login with email/password
+  - Admin login with secure credentials
+  - Protected routes for users and admins
+  - Token-based authentication with 7-day expiry
 
-Table of Contents
+- **Ticket Management**
+  - Users can submit and track their own tickets
+  - Tickets are filtered by user email (users only see their own tickets)
+  - Admins can view and manage all tickets
+  - Real-time conversation threading
 
-Features
+- **AI-Powered Agents**
+  - Automatic intent classification (General, Technical, Refund)
+  - Confidence-based message routing:
+    - `>=80%` confidence: Auto-sent to user
+    - `50-79%` confidence: Pending admin review
+    - `<50%` confidence: Escalated to admin
 
-Tech Stack
+- **Admin Actions**
+  - Approve agent messages
+  - Edit messages before sending
+  - Reject and provide custom responses
+  - Reassign to different agents
 
-Getting Started
+- **UI/UX**
+  - Modern dark/light theme toggle
+  - Loading states and spinners
+  - Responsive design
+  - Clean conversation interface
 
-Backend Setup
+> **Note:** OpenAI integration is optional. The system uses mock AI agents by default. Enable real AI by providing a valid OpenAI API key.
 
-Frontend Setup
+## Tech Stack
 
-API Endpoints
+| Layer | Technology |
+|-------|------------|
+| Backend | Node.js, Express.js |
+| Database | SQLite (better-sqlite3) |
+| Frontend | React.js |
+| Authentication | SHA-256 hashing, Base64 tokens |
+| Email | Nodemailer (SMTP) |
 
-Admin Actions
+## Getting Started
 
-Project Structure
+### Prerequisites
 
-Environment Variables
+- Node.js v18+
+- npm or yarn
 
-Future Improvements
+### Backend Setup
 
-Features
-
-Guest ticket submission via email and message form
-
-AI agent classification of messages (General, Technical, Refund)
-
-Agent automatic replies
-
-Confidence-based message status:
-
-pending → medium confidence
-
-low-confidence → requires admin review
-
-escalated → failed agent messages
-
-Admin actions:
-
-Approve messages
-
-Edit messages
-
-Reject messages
-
-Reassign messages to a different agent
-
-Email notifications for guests and agent replies
-
-React-based frontend for both guests and admin
-
-SQLite database for ticket and message storage
-
-Tech Stack
-
-Backend: Node.js, Express.js
-
-Database: SQLite
-
-Frontend: React.js (functional components & hooks)
-
-Email: Custom email utility (SMTP or any provider)
-
-UUIDs: For unique ticket and message IDs
-
-Getting Started
-Prerequisites
-
-Node.js v18+
-
-npm or yarn
-
-SQLite3
-
-Backend Setup
-
-Navigate to the backend folder:
-
+```bash
 cd backend
-
-
-Install dependencies:
-
 npm install
-# or
-yarn install
+```
 
+Create a `.env` file:
 
-Create a .env file with the following variables:
-
-# OpenAI API Key (optional if using real AI)
-OPENAI_API_KEY=sk-<your-key>
-
-# Redis (optional for caching)
-REDIS_HOST=127.0.0.1
-REDIS_PORT=6379
+```env
+# OpenAI API Key (optional)
+OPENAI_API_KEY=sk-your-key
 
 # Email credentials
-EMAIL_USER=m.asad2098@gmail.com
-EMAIL_PASS=A1s2d3@f
-
+EMAIL_USER=your-email@gmail.com
+EMAIL_PASS=your-app-password
+```
 
 Start the backend:
 
+```bash
 npm run dev
-# or
-yarn dev
+```
 
+Backend runs on `http://localhost:4000`
 
-The backend runs on http://localhost:4000 by default.
+### Frontend Setup
 
-Frontend Setup
-
-Navigate to the frontend folder:
-
+```bash
 cd frontend
-
-
-Install dependencies:
-
 npm install
-# or
-yarn install
-
-
-Start the React app:
-
 npm start
-# or
-yarn start
+```
 
+Frontend runs on `http://localhost:3000`
 
-Open http://localhost:3000 in your browser.
-Toggle Admin Mode to see approve/edit/reject/reassign options.
+## Authentication
 
-API Endpoints
-Tickets
+### User Routes
 
-GET /tickets – Get all tickets with messages
+| Route | Description |
+|-------|-------------|
+| `/signup` | Create new user account |
+| `/login` | User login |
+| `/` | User dashboard (protected) |
+| `/ticket/:id` | View ticket details (protected) |
 
-POST /tickets – Submit a new ticket
+### Admin Routes
 
-Request Body:
+| Route | Description |
+|-------|-------------|
+| `/admin/login` | Admin login |
+| `/admin` | Admin dashboard (protected) |
 
+### Default Admin Credentials
+
+```
+Email: admin2098@gmail.com
+Password: A1s2d3@f
+```
+
+## API Endpoints
+
+### Authentication
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/auth/signup` | Register new user |
+| POST | `/auth/login` | User login |
+| POST | `/auth/admin/login` | Admin login |
+| GET | `/auth/verify` | Verify token |
+
+### Tickets
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/tickets` | Get all tickets (admin) |
+| GET | `/tickets?email=user@example.com` | Get user's tickets |
+| POST | `/tickets` | Create new ticket |
+| POST | `/tickets/:id/messages` | Add reply to ticket |
+| POST | `/tickets/:id/admin-action` | Admin actions |
+
+### Request/Response Examples
+
+**Create Ticket:**
+```json
+POST /tickets
 {
-  "email": "guest@example.com",
-  "message": "I need help with my order"
+  "email": "user@example.com",
+  "message": "I need help with my refund"
 }
+```
 
-
-Response:
-
-{
-  "ticketId": "uuid",
-  "classification": {
-    "intent": "general",
-    "confidence": 0.6
-  }
-}
-
-Admin Actions
-
-POST /tickets/:ticketId/admin-action – Approve, edit, reject, or reassign a message
-
-Request Body:
-
+**Admin Action:**
+```json
+POST /tickets/:ticketId/admin-action
 {
   "messageId": "uuid",
   "action": "approve | edit | reject | reassign",
-  "editedText": "Optional text",
-  "reassignTo": "TechnicalAgent" // only for reassign
+  "editedText": "Optional edited text",
+  "reassignTo": "technical"
 }
+```
 
-Guest Reply
+## Project Structure
 
-POST /tickets/:ticketId/messages – Add guest reply
+```
+ai-multi-agent-support-system/
+├── backend/
+│   ├── src/
+│   │   ├── agents/           # AI agents (Refund, Technical, General)
+│   │   ├── db/               # SQLite database setup
+│   │   ├── orchestrator/     # Intent classification
+│   │   ├── routes/
+│   │   │   ├── auth.js       # Authentication routes
+│   │   │   └── tickets.js    # Ticket routes
+│   │   ├── utils/
+│   │   │   ├── email.js      # Email notifications
+│   │   │   └── escalator.js  # Auto-escalation logic
+│   │   └── index.js          # Server entry point
+│   └── support.db            # SQLite database file
+│
+├── frontend/
+│   └── src/
+│       ├── App.js            # User dashboard
+│       ├── Login.js          # User login page
+│       ├── Signup.js         # User signup page
+│       ├── AdminLogin.js     # Admin login page
+│       ├── AdminDashboard.js # Admin dashboard
+│       ├── TicketView.js     # Ticket detail view
+│       ├── ProtectedRoute.js # Route guards
+│       ├── Root.js           # Router configuration
+│       └── App.css           # Styles with dark/light themes
+│
+└── README.md
+```
 
-Request Body:
+## Database Schema
 
-{
-  "sender": "guest",
-  "text": "I have more questions"
-}
+### Users Table
+```sql
+CREATE TABLE users (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  email TEXT UNIQUE NOT NULL,
+  password TEXT NOT NULL,
+  role TEXT DEFAULT 'user',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+```
 
-Admin Actions & Frontend Behavior
+### Admins Table
+```sql
+CREATE TABLE admins (
+  id TEXT PRIMARY KEY,
+  email TEXT UNIQUE NOT NULL,
+  password TEXT NOT NULL,
+  name TEXT DEFAULT 'Admin',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+```
 
-For agent messages with status pending or low-confidence:
+### Tickets Table
+```sql
+CREATE TABLE tickets (
+  id TEXT PRIMARY KEY,
+  email TEXT NOT NULL,
+  status TEXT DEFAULT 'open',
+  confidence REAL,
+  intent TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+```
 
-Approve → Sends message to guest, marks as approved
+### Messages Table
+```sql
+CREATE TABLE messages (
+  id TEXT PRIMARY KEY,
+  ticket_id TEXT NOT NULL,
+  sender TEXT NOT NULL,
+  content TEXT,
+  reasoning TEXT,
+  status TEXT DEFAULT 'sent',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+```
 
-Edit → Updates message content and marks as approved
+## Environment Variables
 
-Reject → Marks message as rejected
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `OPENAI_API_KEY` | OpenAI API key for real AI | No |
+| `EMAIL_USER` | SMTP email address | Yes |
+| `EMAIL_PASS` | SMTP email password | Yes |
+| `REDIS_HOST` | Redis host (for caching) | No |
+| `REDIS_PORT` | Redis port | No |
 
-Reassign → Sends message to another agent and marks original message as reassigned
+## Future Improvements
 
-Frontend logic snippet:
+- [ ] JWT tokens instead of Base64-encoded tokens
+- [ ] Password reset functionality
+- [ ] User profile management
+- [ ] Ticket pagination and search
+- [ ] WebSocket for real-time updates
+- [ ] File attachments
+- [ ] Email verification on signup
 
-if (msg.sender === "agent" && (msg.status === "pending" || msg.status === "low-confidence")) {
-  actions = ["Approve", "Edit", "Reject", "Reassign"];
-}
+## Author
 
-Project Structure
-backend/
-├─ agents/             # Mock AI agents
-├─ orchestrator/       # Intent classification logic
-├─ utils/              # Email utility
-├─ db/                 # SQLite database setup
-├─ routes/             # Express routes
-├─ index.js            # Backend entry
-
-frontend/
-├─ src/
-│  ├─ App.jsx          # Main React component
-│  ├─ api/             # API requests
-│  └─ components/      # Optional reusable components
-
-Environment Variables
-
-OPENAI_API_KEY → Your OpenAI API key (optional)
-
-REDIS_HOST → Redis host (default 127.0.0.1)
-
-REDIS_PORT → Redis port (default 6379)
-
-EMAIL_USER → Email account to send notifications
-
-EMAIL_PASS → Email password
-
-Future Improvements
-
-Integrate real AI agents for better intent classification
-
-Authentication & role-based admin panel
-
-Pagination for tickets
-
-WebSocket for real-time updates
-
-Attachments and file uploads
-
-Author
-
-Muhammad Asad Rafique – Full Stack Developer
+Muhammad Asad Rafique - Full Stack Developer

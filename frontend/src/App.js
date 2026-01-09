@@ -4,7 +4,6 @@ import axios from "axios";
 import "./App.css";
 
 function App() {
-  const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [tickets, setTickets] = useState([]);
   const [replyText, setReplyText] = useState({});
@@ -26,8 +25,9 @@ function App() {
     setLoading(true);
     setLoadingAction('submit');
     try {
+      const userEmail = localStorage.getItem("userEmail");
       const res = await axios.post("http://localhost:4000/tickets", {
-        email,
+        email: userEmail,
         message,
       });
       if (res.data.message === "Merged with existing ticket") {
@@ -35,7 +35,6 @@ function App() {
       } else {
         alert("Ticket submitted! ID: " + res.data.ticketId);
       }
-      setEmail("");
       setMessage("");
       await fetchTickets();
     } catch (err) {
@@ -69,7 +68,8 @@ function App() {
     setLoading(true);
     setLoadingAction('fetch');
     try {
-      const res = await axios.get("http://localhost:4000/tickets");
+      const userEmail = localStorage.getItem("userEmail");
+      const res = await axios.get(`http://localhost:4000/tickets?email=${encodeURIComponent(userEmail)}`);
       // Reverse the array so latest tickets come first
       setTickets(res.data.reverse());
     } catch (err) {
@@ -184,17 +184,6 @@ function App() {
         <form className="ticket-form" onSubmit={submitTicket}>
           <h2 className="ticket-form-title">Submit a Support Request</h2>
           <div className="form-row">
-            <div className="form-group">
-              <label className="form-label">Email Address</label>
-              <input
-                type="email"
-                className="form-input"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
             <div className="form-group message">
               <label className="form-label">How can we help?</label>
               <input
