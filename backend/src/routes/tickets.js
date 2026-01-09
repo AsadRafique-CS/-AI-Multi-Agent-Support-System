@@ -52,7 +52,7 @@ router.post("/", async (req, res) => {
     try {
       // 2️⃣ Classify intent for the new message
       const classification = await classifyIntent(message);
-
+   
       // 3️⃣ Process this new message with agent routing
       await processNewGuestMessage(
         existingTicket.id,
@@ -111,45 +111,100 @@ router.post("/:ticketId/admin-action", async (req, res) => {
   const { ticketId } = req.params;
   const { messageId, action, editedText, reassignTo } = req.body;
 
+  if (!["approve", "edit", "reject", "reassign"].includes(action)) {
+    return res.status(400).json({ error: "Invalid admin action" });
+  }
+
   try {
     const msg = db
       .prepare("SELECT * FROM messages WHERE id = ? AND ticket_id = ?")
       .get(messageId, ticketId);
 
-    if (!msg) return res.status(404).json({ error: "Message not found" });
+    if (!msg) {
+      return res.status(404).json({ error: "Message not found" });
+    }
+
+    const ticket = db
+      .prepare("SELECT * FROM tickets WHERE id = ?")
+      .get(ticketId);
 
     let finalText = msg.content;
     let newStatus = msg.status;
 
-    if (action === "approve") {
-      finalText = editedText || msg.content;
+    // ✅ APPROVE / EDIT
+    if (action === "approve" || action === "edit") {
+      finalText = editedText?.trim() || msg.content;
       newStatus = "approved";
-    } else if (action === "edit") {
-      finalText = editedText || msg.content;
-      newStatus = "approved";
-    } else if (action === "reject") {
-      finalText = editedText || "Manual response from admin";
-      newStatus = "rejected";
-    } else if (action === "reassign") {
-      // Reassign to a different agent
-      const agentResponse = await callAgent(reassignTo || msg.intent, finalText);
-      saveAgentMessage(ticketId, agentResponse, "sent");
-      newStatus = "reassigned";
+
+      // Update message
+      db.prepare(
+        "UPDATE messages SET content = ?, status = ? WHERE id = ?"
+      ).run(finalText, newStatus, messageId);
+
+      // Update ticket
+      db.prepare(
+        "UPDATE tickets SET status = ? WHERE id = ?"
+      ).run("answered", ticketId);
+
+      // ✅ EMAIL USER
+      await sendAgentReplyEmail(ticket.email, ticketId, {
+        response: finalText,
+        reasoning: "Approved by admin",
+      });
     }
 
-    // Update original message status/content if approved, edited, or rejected
-    db.prepare(
-      "UPDATE messages SET content = ?, status = ? WHERE id = ?"
-    ).run(finalText, newStatus, messageId);
+    // ❌ REJECT (internal only)
+  else if (action === "reject") {
+  finalText = editedText?.trim() || "Admin will respond shortly";
 
-    res.json({ status: "ok" });
+  // 1️⃣ Mark agent message rejected
+  db.prepare(
+    "UPDATE messages SET status = ? WHERE id = ?"
+  ).run("rejected", messageId);
+
+  // 2️⃣ Insert admin message (VISIBLE TO USER)
+  db.prepare(
+    "INSERT INTO messages (id, ticket_id, sender, content, status) VALUES (?, ?, ?, ?, ?)"
+  ).run(uuid(), ticketId, "admin", finalText, "sent");
+
+  // 3️⃣ Update ticket
+  db.prepare(
+    "UPDATE tickets SET status = ? WHERE id = ?"
+  ).run("answered", ticketId);
+
+  // 4️⃣ Email user
+  await sendAgentReplyEmail(ticket.email, ticketId, {
+    response: finalText,
+    reasoning: "Rejected AI response, admin reply",
+  });
+}
+
+
+    // 🔁 REASSIGN
+    else if (action === "reassign") {
+      const agentResponse = await callAgent(
+        reassignTo || ticket.intent,
+        msg.content
+      );
+
+      saveAgentMessage(ticketId, agentResponse, "pending");
+
+      db.prepare(
+        "UPDATE messages SET status = ? WHERE id = ?"
+      ).run("reassigned", messageId);
+
+      db.prepare(
+        "UPDATE tickets SET status = ? WHERE id = ?"
+      ).run("pending", ticketId);
+    }
+
+    res.json({ success: true });
   } catch (err) {
-    console.error(err);
+    console.error("Admin action error:", err);
     res.status(500).json({ error: "Failed to perform admin action" });
   }
 });
 
-// POST guest reply
 // POST guest reply to an existing ticket
 router.post("/:ticketId/messages", async (req, res) => {
   const { ticketId } = req.params;
@@ -213,13 +268,17 @@ async function callAgent(intent, message) {
 
 // Helper to save agent message
 function saveAgentMessage(ticketId, agentResponse, status = "sent") {
+  const now = new Date().toISOString();
   db.prepare(
-    "INSERT INTO messages (id, ticket_id, sender, content, reasoning, status) VALUES (?, ?, ?, ?, ?, ?)"
-  ).run(uuid(), ticketId, "agent", agentResponse.response, agentResponse.reasoning, status);
+    "INSERT INTO messages (id, ticket_id, sender, content, reasoning, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).run(uuid(), ticketId, "agent", agentResponse.response, agentResponse.reasoning, status, now);
+
 }
 
 
 export default router;
+
+//confidence thresholds and deciding whether the AI response is sent automatically or flagged for review is:
 export async function processNewGuestMessage(ticketId, messageContent, intent, email, confidence) {
   let status;
   if (confidence >= 0.8) status = "sent";

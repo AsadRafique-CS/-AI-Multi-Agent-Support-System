@@ -301,7 +301,12 @@ const submitGuestReply = async (ticketId, text) => {
             <div style={{ marginTop: "1rem" }}>
               <h4>Conversation:</h4>
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                {ticket.messages.map((msg) => (
+                {ticket.messages.filter(msg =>
+    isAdmin ||
+    msg.sender === "guest" ||
+    msg.status === "sent" ||
+    msg.status === "approved"
+  ).map((msg) => (
                   <div
   key={msg.id}
   style={{
