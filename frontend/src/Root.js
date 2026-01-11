@@ -5,6 +5,8 @@ import Login from "./Login";
 import Signup from "./Signup";
 import AdminLogin from "./AdminLogin";
 import AdminDashboard from "./AdminDashboard";
+import ForgotPassword from "./ForgotPassword";
+import ResetPassword from "./ResetPassword";
 import { UserProtectedRoute, AdminProtectedRoute } from "./ProtectedRoute";
 
 export default function Root() {
@@ -14,6 +16,8 @@ export default function Root() {
         {/* Public Routes */}
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/admin/login" element={<AdminLogin />} />
 
         {/* User Protected Routes */}

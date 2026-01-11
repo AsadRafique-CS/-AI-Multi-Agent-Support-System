@@ -9,6 +9,10 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(false);
   const [loadingAction, setLoadingAction] = useState(null);
   const [darkMode, setDarkMode] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pagination, setPagination] = useState({ total: 0, totalPages: 0, page: 1, limit: 10 });
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -17,14 +21,23 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     fetchTickets();
-  }, []);
+  }, [currentPage, searchQuery, statusFilter]);
 
   const fetchTickets = async () => {
     setLoading(true);
     setLoadingAction("fetch");
     try {
-      const res = await axios.get("http://localhost:4000/tickets");
-      setTickets(res.data.reverse());
+      const params = new URLSearchParams({
+        page: currentPage,
+        limit: 10,
+      });
+
+      if (searchQuery) params.append('search', searchQuery);
+      if (statusFilter) params.append('status', statusFilter);
+
+      const res = await axios.get(`http://localhost:4000/tickets?${params.toString()}`);
+      setTickets(res.data.tickets || []);
+      setPagination(res.data.pagination || { total: 0, totalPages: 0, page: 1, limit: 10 });
     } catch (err) {
       console.error(err);
     } finally {
@@ -186,6 +199,40 @@ export default function AdminDashboard() {
               </span>
               <span className="stat-label">Pending Review</span>
             </div>
+          </div>
+        </div>
+
+        {/* Search and Filter */}
+        <div className="search-filter-container" style={{ marginBottom: "20px", display: "flex", gap: "12px", flexWrap: "wrap" }}>
+          <div className="form-group" style={{ flex: "1", minWidth: "200px", margin: 0 }}>
+            <input
+              type="text"
+              className="form-input"
+              placeholder="Search by email or ticket ID..."
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
+              style={{ marginBottom: 0 }}
+            />
+          </div>
+          <div className="form-group" style={{ flex: "0 0 auto", minWidth: "150px", margin: 0 }}>
+            <select
+              className="form-input"
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+              style={{ marginBottom: 0 }}
+            >
+              <option value="">All Status</option>
+              <option value="open">Open</option>
+              <option value="pending">Pending</option>
+              <option value="answered">Answered</option>
+              <option value="closed">Closed</option>
+            </select>
           </div>
         </div>
 
@@ -367,6 +414,44 @@ export default function AdminDashboard() {
             ))
           )}
         </div>
+
+        {/* Pagination */}
+        {pagination.totalPages > 1 && (
+          <div className="pagination" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px", marginTop: "30px", padding: "20px 0" }}>
+            <button
+              className="btn btn-secondary"
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              style={{ opacity: currentPage === 1 ? 0.5 : 1 }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+              Previous
+            </button>
+
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <span style={{ fontSize: "14px", color: "var(--text-muted)" }}>
+                Page {pagination.page} of {pagination.totalPages}
+              </span>
+              <span style={{ fontSize: "13px", color: "var(--text-muted)", marginLeft: "8px" }}>
+                ({pagination.total} total)
+              </span>
+            </div>
+
+            <button
+              className="btn btn-secondary"
+              onClick={() => setCurrentPage(prev => Math.min(pagination.totalPages, prev + 1))}
+              disabled={currentPage >= pagination.totalPages}
+              style={{ opacity: currentPage >= pagination.totalPages ? 0.5 : 1 }}
+            >
+              Next
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </button>
+          </div>
+        )}
       </main>
     </div>
   );

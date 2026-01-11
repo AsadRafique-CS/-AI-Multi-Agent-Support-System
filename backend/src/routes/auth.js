@@ -2,34 +2,40 @@ import express from "express";
 import { db } from "../db/db.js";
 import { v4 as uuidv4 } from "uuid";
 import crypto from "crypto";
+import jwt from "jsonwebtoken";
+import { sendPasswordResetEmail } from "../utils/email.js";
 
 const router = express.Router();
 
-// Simple password hashing using crypto (built-in Node.js)
+// JWT Secret (in production, use environment variable)
+const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-this-in-production";
+const JWT_EXPIRY = "7d"; // 7 days
+
+// Password hashing using crypto (built-in Node.js)
 const hashPassword = (password) => {
   return crypto.createHash("sha256").update(password).digest("hex");
 };
 
-// Simple token generation
-const generateToken = (userId, role) => {
-  const payload = {
-    userId,
-    role,
-    exp: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days expiry
-  };
-  return Buffer.from(JSON.stringify(payload)).toString("base64");
+// JWT token generation
+const generateToken = (userId, role, email) => {
+  return jwt.sign(
+    {
+      userId,
+      role,
+      email
+    },
+    JWT_SECRET,
+    { expiresIn: JWT_EXPIRY }
+  );
 };
 
-// Verify token
+// Verify JWT token
 export const verifyToken = (token) => {
   try {
-    const payload = JSON.parse(Buffer.from(token, "base64").toString());
-    if (payload.exp < Date.now()) {
-      return null; // Token expired
-    }
-    return payload;
-  } catch {
-    return null;
+    const decoded = jwt.verify(token, JWT_SECRET);
+    return decoded;
+  } catch (err) {
+    return null; // Invalid or expired token
   }
 };
 
@@ -69,7 +75,7 @@ router.post("/signup", (req, res) => {
     `).run(userId, name.trim(), email.toLowerCase(), hashedPassword);
 
     // Generate token
-    const token = generateToken(userId, "user");
+    const token = generateToken(userId, "user", email.toLowerCase());
 
     res.status(201).json({
       message: "Account created successfully",
@@ -111,7 +117,7 @@ router.post("/login", (req, res) => {
     }
 
     // Generate token
-    const token = generateToken(user.id, "user");
+    const token = generateToken(user.id, "user", user.email);
 
     res.json({
       message: "Login successful",
@@ -161,7 +167,7 @@ router.post("/admin/login", (req, res) => {
       }
 
       // Generate admin token
-      const token = generateToken(admin.id, "admin");
+      const token = generateToken(admin.id, "admin", admin.email);
 
       return res.json({
         message: "Admin login successful",
@@ -189,7 +195,7 @@ router.post("/admin/login", (req, res) => {
     }
 
     // Generate token
-    const token = generateToken(admin.id, "admin");
+    const token = generateToken(admin.id, "admin", admin.email);
 
     res.json({
       message: "Admin login successful",
@@ -204,6 +210,105 @@ router.post("/admin/login", (req, res) => {
   } catch (err) {
     console.error("Admin login error:", err);
     res.status(500).json({ error: "Login failed" });
+  }
+});
+
+// ==================== PASSWORD RESET ====================
+
+// Forgot Password - Generate reset token and send email
+router.post("/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+
+    // Find user
+    const user = db.prepare("SELECT * FROM users WHERE email = ?").get(email.toLowerCase());
+
+    // For security, always return success even if user doesn't exist
+    if (!user) {
+      return res.json({
+        message: "If an account exists with this email, you will receive a password reset link."
+      });
+    }
+
+    // Generate reset token (6-digit code for simplicity)
+    const resetToken = Math.floor(100000 + Math.random() * 900000).toString();
+    const tokenId = uuidv4();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+    // Store token in database
+    db.prepare(`
+      INSERT INTO password_reset_tokens (id, user_id, token, expires_at)
+      VALUES (?, ?, ?, ?)
+    `).run(tokenId, user.id, resetToken, expiresAt.toISOString());
+
+    // Send email with reset token
+    await sendPasswordResetEmail(email, resetToken);
+
+    res.json({
+      message: "If an account exists with this email, you will receive a password reset link.",
+      // Include token in development for testing
+      resetToken: process.env.NODE_ENV === "development" ? resetToken : undefined
+    });
+  } catch (err) {
+    console.error("Forgot password error:", err);
+    res.status(500).json({ error: "Failed to process request" });
+  }
+});
+
+// Reset Password - Verify token and update password
+router.post("/reset-password", (req, res) => {
+  try {
+    const { email, token, newPassword } = req.body;
+
+    // Validation
+    if (!email || !token || !newPassword) {
+      return res.status(400).json({ error: "Email, token, and new password are required" });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: "Password must be at least 6 characters" });
+    }
+
+    // Find user
+    const user = db.prepare("SELECT * FROM users WHERE email = ?").get(email.toLowerCase());
+
+    if (!user) {
+      return res.status(400).json({ error: "Invalid reset token or email" });
+    }
+
+    // Find valid token
+    const resetTokenRecord = db.prepare(`
+      SELECT * FROM password_reset_tokens
+      WHERE user_id = ? AND token = ? AND used = 0
+      ORDER BY created_at DESC
+      LIMIT 1
+    `).get(user.id, token);
+
+    if (!resetTokenRecord) {
+      return res.status(400).json({ error: "Invalid or expired reset token" });
+    }
+
+    // Check if token is expired
+    const expiresAt = new Date(resetTokenRecord.expires_at);
+    if (expiresAt < new Date()) {
+      return res.status(400).json({ error: "Reset token has expired" });
+    }
+
+    // Update password
+    const hashedPassword = hashPassword(newPassword);
+    db.prepare("UPDATE users SET password = ? WHERE id = ?").run(hashedPassword, user.id);
+
+    // Mark token as used
+    db.prepare("UPDATE password_reset_tokens SET used = 1 WHERE id = ?").run(resetTokenRecord.id);
+
+    res.json({ message: "Password reset successfully" });
+  } catch (err) {
+    console.error("Reset password error:", err);
+    res.status(500).json({ error: "Failed to reset password" });
   }
 });
 

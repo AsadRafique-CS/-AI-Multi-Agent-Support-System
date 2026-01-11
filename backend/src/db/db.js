@@ -68,4 +68,17 @@ CREATE TABLE IF NOT EXISTS admins (
 )
 `).run();
 
+// Password reset tokens table
+db.prepare(`
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  token TEXT UNIQUE NOT NULL,
+  expires_at DATETIME NOT NULL,
+  used INTEGER DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(user_id) REFERENCES users(id)
+)
+`).run();
+
 console.log("Database initialized at", dbPath);

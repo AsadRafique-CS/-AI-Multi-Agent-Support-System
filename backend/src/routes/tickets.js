@@ -6,18 +6,54 @@ import { db } from "../db/db.js";
 import { sendTicketEmail, sendAgentReplyEmail } from "../utils/email.js";
 const router = express.Router();
 
-// GET all tickets with messages (optionally filtered by email for users)
+// GET all tickets with messages (with pagination and search)
 router.get("/", (req, res) => {
-  const { email } = req.query;
+  const { email, page = 1, limit = 10, search = "", status = "" } = req.query;
 
-  let tickets;
+  const pageNum = parseInt(page);
+  const limitNum = parseInt(limit);
+  const offset = (pageNum - 1) * limitNum;
+
+  // Build SQL query with filters
+  let query = "SELECT * FROM tickets WHERE 1=1";
+  let countQuery = "SELECT COUNT(*) as total FROM tickets WHERE 1=1";
+  const params = [];
+  const countParams = [];
+
+  // Filter by email (for users)
   if (email) {
-    // Filter tickets by user email
-    tickets = db.prepare("SELECT * FROM tickets WHERE email = ?").all(email.toLowerCase());
-  } else {
-    // Return all tickets (for admin)
-    tickets = db.prepare("SELECT * FROM tickets").all();
+    query += " AND email = ?";
+    countQuery += " AND email = ?";
+    params.push(email.toLowerCase());
+    countParams.push(email.toLowerCase());
   }
+
+  // Filter by status
+  if (status) {
+    query += " AND status = ?";
+    countQuery += " AND status = ?";
+    params.push(status);
+    countParams.push(status);
+  }
+
+  // Search by email or ticket ID
+  if (search) {
+    query += " AND (email LIKE ? OR id LIKE ?)";
+    countQuery += " AND (email LIKE ? OR id LIKE ?)";
+    const searchPattern = `%${search}%`;
+    params.push(searchPattern, searchPattern);
+    countParams.push(searchPattern, searchPattern);
+  }
+
+  // Add ordering and pagination
+  query += " ORDER BY created_at DESC LIMIT ? OFFSET ?";
+  params.push(limitNum, offset);
+
+  // Get total count
+  const { total } = db.prepare(countQuery).get(...countParams);
+
+  // Get paginated tickets
+  const tickets = db.prepare(query).all(...params);
 
   const ticketsWithMessages = tickets.map((ticket) => {
     const messages = db
@@ -36,54 +72,25 @@ router.get("/", (req, res) => {
     };
   });
 
-  res.json(ticketsWithMessages);
+  res.json({
+    tickets: ticketsWithMessages,
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      total,
+      totalPages: Math.ceil(total / limitNum),
+    },
+  });
 });
 
-// POST new ticket or merge message
+// POST new ticket
 router.post("/", async (req, res) => {
   const { email, message } = req.body;
   if (!email || !message) {
     return res.status(400).json({ error: "Email & message required" });
   }
 
-  // 1️⃣ Check for duplicate open ticket
-  const existingTicket = db
-    .prepare("SELECT * FROM tickets WHERE email = ? AND status != 'closed'")
-    .get(email);
-
-  if (existingTicket) {
-    // Insert guest message into existing ticket
-    const messageId = uuid();
-    db.prepare(
-      "INSERT INTO messages (id, ticket_id, sender, content, status) VALUES (?, ?, ?, ?, ?)"
-    ).run(messageId, existingTicket.id, "guest", message, "sent");
-
-    try {
-      // 2️⃣ Classify intent for the new message
-      const classification = await classifyIntent(message);
-   
-      // 3️⃣ Process this new message with agent routing
-      await processNewGuestMessage(
-        existingTicket.id,
-        message,
-        classification.intent,
-        email,
-        classification.confidence
-      );
-
-      // Send notification to guest about merged message
-      await sendTicketEmail(email, existingTicket.id);
-    } catch (err) {
-      console.error("Error processing merged message:", err);
-    }
-
-    return res.json({
-      ticketId: existingTicket.id,
-      message: "Merged with existing ticket",
-    });
-  }
-
-  // 4️⃣ Create new ticket
+  // Create new ticket
   const ticketId = uuid();
   let classification;
   try {
@@ -102,10 +109,10 @@ router.post("/", async (req, res) => {
   ).run(uuid(), ticketId, "guest", message, "sent");
 
   try {
-    // 5️⃣ Process message with agent
+    // Process message with agent
     await processNewGuestMessage(ticketId, message, classification.intent, email, classification.confidence);
 
-    // 6️⃣ Send ticket email to guest
+    // Send ticket email to guest
     await sendTicketEmail(email, ticketId);
   } catch (err) {
     console.error("Error processing new ticket:", err);

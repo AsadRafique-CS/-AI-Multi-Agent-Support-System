@@ -8,7 +8,9 @@ A full-stack support ticket system with AI-powered agent responses, user authent
   - User signup and login with email/password
   - Admin login with secure credentials
   - Protected routes for users and admins
-  - Token-based authentication with 7-day expiry
+  - JWT token-based authentication with 7-day expiry
+  - Secure password hashing with SHA-256
+  - Password reset via email with 6-digit code (15-minute expiry)
 
 - **Ticket Management**
   - Users can submit and track their own tickets
@@ -44,7 +46,7 @@ A full-stack support ticket system with AI-powered agent responses, user authent
 | Backend | Node.js, Express.js |
 | Database | SQLite (better-sqlite3) |
 | Frontend | React.js |
-| Authentication | SHA-256 hashing, Base64 tokens |
+| Authentication | JWT tokens, SHA-256 password hashing |
 | Email | Nodemailer (SMTP) |
 
 ## Getting Started
@@ -67,10 +69,38 @@ Create a `.env` file:
 # OpenAI API Key (optional)
 OPENAI_API_KEY=sk-your-key
 
-# Email credentials
-EMAIL_USER=your-email@gmail.com
-EMAIL_PASS=your-app-password
+# Email Configuration
+EMAIL_USER=your-email@example.com
+EMAIL_PASS=your-password-or-app-password
+
+# SMTP Server (optional - for custom domains not using Google Workspace)
+# SMTP_HOST=mail.yourdomain.com
+# SMTP_PORT=587
+
+# JWT Secret (required for authentication)
+JWT_SECRET=your-super-secret-jwt-key-change-in-production
 ```
+
+**Email Setup Guide:**
+
+1. **For Gmail (@gmail.com):**
+   - Use your Gmail address as `EMAIL_USER`
+   - Generate an App Password at [Google App Passwords](https://myaccount.google.com/apppasswords)
+   - Use the App Password as `EMAIL_PASS` (not your regular Gmail password)
+   - Leave `SMTP_HOST` and `SMTP_PORT` empty
+
+2. **For Google Workspace (custom domain using Gmail):**
+   - Use your custom domain email as `EMAIL_USER` (e.g., `you@company.com`)
+   - Generate an App Password from your Google Workspace account
+   - Use the App Password as `EMAIL_PASS`
+   - Leave `SMTP_HOST` and `SMTP_PORT` empty
+
+3. **For Other Email Providers:**
+   - Use your email address as `EMAIL_USER`
+   - Use your email password as `EMAIL_PASS`
+   - Set `SMTP_HOST` to your provider's SMTP server (e.g., `smtp.office365.com` for Outlook)
+   - Set `SMTP_PORT` to your provider's SMTP port (usually `587` or `465`)
+   - Contact your email provider for specific SMTP settings
 
 Start the backend:
 
@@ -98,6 +128,8 @@ Frontend runs on `http://localhost:3000`
 |-------|-------------|
 | `/signup` | Create new user account |
 | `/login` | User login |
+| `/forgot-password` | Request password reset code |
+| `/reset-password` | Reset password with code |
 | `/` | User dashboard (protected) |
 | `/ticket/:id` | View ticket details (protected) |
 
@@ -124,6 +156,8 @@ Password: A1s2d3@f
 | POST | `/auth/signup` | Register new user |
 | POST | `/auth/login` | User login |
 | POST | `/auth/admin/login` | Admin login |
+| POST | `/auth/forgot-password` | Request password reset |
+| POST | `/auth/reset-password` | Reset password with token |
 | GET | `/auth/verify` | Verify token |
 
 ### Tickets
@@ -245,21 +279,25 @@ CREATE TABLE messages (
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `OPENAI_API_KEY` | OpenAI API key for real AI | No |
+| `JWT_SECRET` | Secret key for JWT token signing | **Yes** |
 | `EMAIL_USER` | SMTP email address | Yes |
 | `EMAIL_PASS` | SMTP email password | Yes |
+| `OPENAI_API_KEY` | OpenAI API key for real AI | No |
 | `REDIS_HOST` | Redis host (for caching) | No |
 | `REDIS_PORT` | Redis port | No |
 
 ## Future Improvements
 
-- [ ] JWT tokens instead of Base64-encoded tokens
-- [ ] Password reset functionality
+- [x] JWT tokens instead of Base64-encoded tokens ✅
+- [x] Password reset functionality ✅
+- [ ] Bcrypt for password hashing (currently using SHA-256)
 - [ ] User profile management
 - [ ] Ticket pagination and search
 - [ ] WebSocket for real-time updates
 - [ ] File attachments
 - [ ] Email verification on signup
+- [ ] Refresh token mechanism
+- [ ] Rate limiting on password reset attempts
 
 ## Author
 

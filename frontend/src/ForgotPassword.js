@@ -1,47 +1,39 @@
 import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import axios from "axios";
 import "./App.css";
 
-export default function Login() {
+export default function ForgotPassword() {
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
+  const [resetToken, setResetToken] = useState("");
   const [darkMode, setDarkMode] = useState(true);
-  const navigate = useNavigate();
 
   useEffect(() => {
     document.body.setAttribute("data-theme", darkMode ? "dark" : "light");
   }, [darkMode]);
 
-  useEffect(() => {
-    // Redirect if already logged in
-    const token = localStorage.getItem("userToken");
-    if (token) {
-      navigate("/");
-    }
-  }, [navigate]);
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+    setSuccess(false);
     setLoading(true);
 
     try {
-      const response = await axios.post("http://localhost:4000/auth/login", {
+      const response = await axios.post("http://localhost:4000/auth/forgot-password", {
         email: email.toLowerCase(),
-        password,
       });
 
-      // Save token and user info
-      localStorage.setItem("userToken", response.data.token);
-      localStorage.setItem("userEmail", response.data.user.email);
-      localStorage.setItem("userName", response.data.user.name);
+      setSuccess(true);
 
-      navigate("/");
+      // In development, show the reset token
+      if (response.data.resetToken) {
+        setResetToken(response.data.resetToken);
+      }
     } catch (err) {
-      const errorMessage = err.response?.data?.error || "Login failed. Please try again.";
+      const errorMessage = err.response?.data?.error || "Failed to send reset email. Please try again.";
       setError(errorMessage);
     } finally {
       setLoading(false);
@@ -55,7 +47,7 @@ export default function Login() {
         <div className="loading-overlay">
           <div className="loading-spinner">
             <div className="spinner"></div>
-            <p className="loading-text">Signing in...</p>
+            <p className="loading-text">Sending reset code...</p>
           </div>
         </div>
       )}
@@ -71,11 +63,13 @@ export default function Login() {
           <span className="app-logo-text">Support Hub</span>
         </div>
         <div className="header-actions">
-          <Link to="/admin/login" className="btn btn-secondary">
+          <Link to="/login" className="btn btn-secondary">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+              <polyline points="10 17 15 12 10 7" />
+              <line x1="15" y1="12" x2="3" y2="12" />
             </svg>
-            Admin Login
+            Back to Login
           </Link>
           {/* Theme Toggle */}
           <button
@@ -111,12 +105,11 @@ export default function Login() {
             <div className="auth-header">
               <div className="auth-icon">
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                  <circle cx="12" cy="7" r="4" />
+                  <path d="M12 2a10 10 0 0 0-9.95 9h11.64L9.74 7.05a1 1 0 0 1 1.41-1.41l5.66 5.65a1 1 0 0 1 0 1.42l-5.66 5.65a1 1 0 0 1-1.41 0 1 1 0 0 1 0-1.41L13.69 13H2.05A10 10 0 1 0 12 2z" />
                 </svg>
               </div>
-              <h1 className="auth-title">Welcome Back</h1>
-              <p className="auth-subtitle">Sign in to access your support tickets</p>
+              <h1 className="auth-title">Forgot Password?</h1>
+              <p className="auth-subtitle">Enter your email to receive a reset code</p>
             </div>
 
             {error && (
@@ -127,6 +120,27 @@ export default function Login() {
                   <line x1="9" y1="9" x2="15" y2="15" />
                 </svg>
                 {error}
+              </div>
+            )}
+
+            {success && (
+              <div className="auth-success">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                  <polyline points="22 4 12 14.01 9 11.01" />
+                </svg>
+                <div>
+                  <div style={{ fontWeight: "600", marginBottom: "8px" }}>Email Sent!</div>
+                  <div style={{ fontSize: "0.9em", lineHeight: "1.5" }}>
+                    We've sent a password reset code to your email address.
+                    Please check your inbox and follow the instructions to reset your password.
+                  </div>
+                  {resetToken && (
+                    <div style={{ marginTop: "12px", padding: "10px", background: "rgba(37, 99, 235, 0.1)", borderRadius: "6px", fontSize: "0.85em" }}>
+                      <strong>Development Mode:</strong> Reset code: <strong style={{ fontSize: "1.1em", letterSpacing: "2px" }}>{resetToken}</strong>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -145,46 +159,27 @@ export default function Login() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
+                    disabled={success}
                   />
                 </div>
               </div>
 
-              <div className="form-group">
-                <label className="form-label">Password</label>
-                <div className="input-with-icon">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                  </svg>
-                  <input
-                    type="password"
-                    className="form-input"
-                    placeholder="Enter your password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                  />
-                </div>
-                <div style={{ textAlign: "right", marginTop: "8px" }}>
-                  <Link to="/forgot-password" className="auth-link" style={{ fontSize: "0.9em" }}>
-                    Forgot password?
-                  </Link>
-                </div>
-              </div>
-
-              <button type="submit" className="btn btn-primary btn-full" disabled={loading}>
+              <button
+                type="submit"
+                className="btn btn-primary btn-full"
+                disabled={loading || success}
+              >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
-                  <polyline points="10 17 15 12 10 7" />
-                  <line x1="15" y1="12" x2="3" y2="12" />
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                  <polyline points="22,6 12,13 2,6" />
                 </svg>
-                Sign In
+                Send Reset Code
               </button>
             </form>
 
             <div className="auth-footer">
-              <p>Don't have an account?</p>
-              <Link to="/signup" className="auth-link">Create an account</Link>
+              <p>Remember your password?</p>
+              <Link to="/login" className="auth-link">Back to Login</Link>
             </div>
           </div>
         </div>
