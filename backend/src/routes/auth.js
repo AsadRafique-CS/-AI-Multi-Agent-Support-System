@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from "uuid";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { sendPasswordResetEmail } from "../utils/email.js";
+import { authLimiter, passwordResetLimiter } from "../middleware/rateLimit.js";
 
 const router = express.Router();
 
@@ -42,7 +43,7 @@ export const verifyToken = (token) => {
 // ==================== USER ROUTES ====================
 
 // User Signup
-router.post("/signup", (req, res) => {
+router.post("/signup", authLimiter, (req, res) => {
   try {
     const { name, email, password } = req.body;
 
@@ -94,7 +95,7 @@ router.post("/signup", (req, res) => {
 });
 
 // User Login
-router.post("/login", (req, res) => {
+router.post("/login", authLimiter, (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -142,7 +143,7 @@ const ADMIN_EMAIL = "admin2098@gmail.com";
 const ADMIN_PASSWORD = "A1s2d3@f";
 
 // Admin Login
-router.post("/admin/login", (req, res) => {
+router.post("/admin/login", authLimiter, (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -216,7 +217,7 @@ router.post("/admin/login", (req, res) => {
 // ==================== PASSWORD RESET ====================
 
 // Forgot Password - Generate reset token and send email
-router.post("/forgot-password", async (req, res) => {
+router.post("/forgot-password", passwordResetLimiter, async (req, res) => {
   try {
     const { email } = req.body;
 
@@ -260,7 +261,7 @@ router.post("/forgot-password", async (req, res) => {
 });
 
 // Reset Password - Verify token and update password
-router.post("/reset-password", (req, res) => {
+router.post("/reset-password", passwordResetLimiter, (req, res) => {
   try {
     const { email, token, newPassword } = req.body;
 

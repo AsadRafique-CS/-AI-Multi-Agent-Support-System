@@ -7,12 +7,16 @@ import authRouter from "./routes/auth.js";
 import './utils/escalator.js';
 
 import { db } from "./db/db.js";
+import { apiLimiter } from "./middleware/rateLimit.js";
 
 dotenv.config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Apply general rate limiting to all API routes
+app.use("/api/", apiLimiter);
 
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });

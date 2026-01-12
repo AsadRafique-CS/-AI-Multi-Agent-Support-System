@@ -4,6 +4,7 @@ import { classifyIntent } from "../orchestrator/orchestrator.js";
 import { RefundAgent, TechnicalAgent, GeneralAgent } from "../agents/agent.js";
 import { db } from "../db/db.js";
 import { sendTicketEmail, sendAgentReplyEmail } from "../utils/email.js";
+import { ticketCreationLimiter, adminActionLimiter } from "../middleware/rateLimit.js";
 const router = express.Router();
 
 // GET all tickets with messages (with pagination and search)
@@ -84,7 +85,7 @@ router.get("/", (req, res) => {
 });
 
 // POST new ticket
-router.post("/", async (req, res) => {
+router.post("/", ticketCreationLimiter, async (req, res) => {
   const { email, message } = req.body;
   if (!email || !message) {
     return res.status(400).json({ error: "Email & message required" });
@@ -123,7 +124,7 @@ router.post("/", async (req, res) => {
 
 
 // Admin approves/rejects/edit/reassign pending message
-router.post("/:ticketId/admin-action", async (req, res) => {
+router.post("/:ticketId/admin-action", adminActionLimiter, async (req, res) => {
   const { ticketId } = req.params;
   const { messageId, action, editedText, reassignTo } = req.body;
 
@@ -222,7 +223,7 @@ router.post("/:ticketId/admin-action", async (req, res) => {
 });
 
 // POST guest reply to an existing ticket
-router.post("/:ticketId/messages", async (req, res) => {
+router.post("/:ticketId/messages", ticketCreationLimiter, async (req, res) => {
   const { ticketId } = req.params;
   const { sender, text } = req.body;
 
