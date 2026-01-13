@@ -418,26 +418,6 @@ If no match → Create new ticket
 - [ ] File attachments
 - [ ] Refresh token mechanism
 
-## 🐛 Known Issues
-
-- **Orchestrator Error**: Intent classification shows authentication error but uses fallback successfully
-- **Email Sending**: Gmail App Password needs to be regenerated (authentication failing)
-- These issues don't affect core functionality
-
-## 🔧 Troubleshooting
-
-**Issue**: Claude AI agents returning fallback responses
-- **Solution**: Ensure `ANTHROPIC_API_KEY` is set in `.env` and valid
-
-**Issue**: Email not sending
-- **Solution**: Generate new Gmail App Password and update `EMAIL_PASS` in `.env`
-
-**Issue**: "Cannot find module" errors
-- **Solution**: Run `npm install` in both backend and frontend directories
-
-**Issue**: CORS errors
-- **Solution**: Ensure backend is running on port 4000 and frontend on port 3000
-
 ## 🤝 Contributing
 
 This is a portfolio project by Muhammad Asad Rafique. Feel free to fork and customize for your own use!
