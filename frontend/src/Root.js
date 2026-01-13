@@ -3,6 +3,7 @@ import TicketView from "./TicketView";
 import App from "./App";
 import Login from "./Login";
 import Signup from "./Signup";
+import VerifyEmail from "./VerifyEmail";
 import AdminLogin from "./AdminLogin";
 import AdminDashboard from "./AdminDashboard";
 import ForgotPassword from "./ForgotPassword";
@@ -16,6 +17,7 @@ export default function Root() {
         {/* Public Routes */}
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
+        <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/admin/login" element={<AdminLogin />} />

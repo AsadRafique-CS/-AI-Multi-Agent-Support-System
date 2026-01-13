@@ -53,9 +53,20 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT UNIQUE NOT NULL,
   password TEXT NOT NULL,
   role TEXT DEFAULT 'user',
+  email_verified INTEGER DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 )
 `).run();
+
+// Add email_verified column to existing users table if missing
+try {
+  db.prepare("ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0").run();
+} catch (err) {
+  // ignore if column already exists
+  if (!/duplicate column/i.test(err.message)) {
+    console.error("Failed to add email_verified column:", err);
+  }
+}
 
 // Admins table for admin authentication
 db.prepare(`
@@ -80,5 +91,43 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
   FOREIGN KEY(user_id) REFERENCES users(id)
 )
 `).run();
+
+// Email verification tokens table
+db.prepare(`
+CREATE TABLE IF NOT EXISTS email_verification_tokens (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  token TEXT UNIQUE NOT NULL,
+  expires_at DATETIME NOT NULL,
+  used INTEGER DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(user_id) REFERENCES users(id)
+)
+`).run();
+
+// Add ticket closing columns if they don't exist
+try {
+  db.prepare("ALTER TABLE tickets ADD COLUMN closed_at DATETIME").run();
+} catch (err) {
+  if (!/duplicate column/i.test(err.message)) {
+    console.error("Failed to add closed_at column:", err);
+  }
+}
+
+try {
+  db.prepare("ALTER TABLE tickets ADD COLUMN closed_by TEXT").run();
+} catch (err) {
+  if (!/duplicate column/i.test(err.message)) {
+    console.error("Failed to add closed_by column:", err);
+  }
+}
+
+try {
+  db.prepare("ALTER TABLE tickets ADD COLUMN close_reason TEXT").run();
+} catch (err) {
+  if (!/duplicate column/i.test(err.message)) {
+    console.error("Failed to add close_reason column:", err);
+  }
+}
 
 console.log("Database initialized at", dbPath);

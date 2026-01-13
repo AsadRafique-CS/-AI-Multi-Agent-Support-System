@@ -3,7 +3,7 @@ import { db } from "../db/db.js";
 import { v4 as uuidv4 } from "uuid";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
-import { sendPasswordResetEmail } from "../utils/email.js";
+import { sendPasswordResetEmail, sendVerificationEmail } from "../utils/email.js";
 import { passwordResetLimiter } from "../middleware/rateLimit.js";
 
 const router = express.Router();
@@ -43,7 +43,7 @@ export const verifyToken = (token) => {
 // ==================== USER ROUTES ====================
 
 // User Signup
-router.post("/signup", (req, res) => {
+router.post("/signup", async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
@@ -66,27 +66,34 @@ router.post("/signup", (req, res) => {
       return res.status(400).json({ error: "An account with this email already exists" });
     }
 
-    // Create user
+    // Create user with email_verified = 0
     const userId = uuidv4();
     const hashedPassword = hashPassword(password);
 
     db.prepare(`
-      INSERT INTO users (id, name, email, password, role)
-      VALUES (?, ?, ?, ?, 'user')
+      INSERT INTO users (id, name, email, password, role, email_verified)
+      VALUES (?, ?, ?, ?, 'user', 0)
     `).run(userId, name.trim(), email.toLowerCase(), hashedPassword);
 
-    // Generate token
-    const token = generateToken(userId, "user", email.toLowerCase());
+    // Generate verification code (6-digit)
+    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const tokenId = uuidv4();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+    // Store verification token in database
+    db.prepare(`
+      INSERT INTO email_verification_tokens (id, user_id, token, expires_at)
+      VALUES (?, ?, ?, ?)
+    `).run(tokenId, userId, verificationCode, expiresAt.toISOString());
+
+    // Send verification email
+    await sendVerificationEmail(email.toLowerCase(), verificationCode);
 
     res.status(201).json({
-      message: "Account created successfully",
-      token,
-      user: {
-        id: userId,
-        name: name.trim(),
-        email: email.toLowerCase(),
-        role: "user",
-      },
+      message: "Account created successfully. Please check your email to verify your account.",
+      email: email.toLowerCase(),
+      // Include verification code in development for testing
+      verificationCode: process.env.NODE_ENV === "development" ? verificationCode : undefined
     });
   } catch (err) {
     console.error("Signup error:", err);
@@ -115,6 +122,15 @@ router.post("/login", (req, res) => {
     const hashedPassword = hashPassword(password);
     if (user.password !== hashedPassword) {
       return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    // Check if email is verified
+    if (user.email_verified === 0) {
+      return res.status(403).json({
+        error: "Please verify your email before logging in. Check your inbox for the verification code.",
+        emailNotVerified: true,
+        email: user.email
+      });
     }
 
     // Generate token
@@ -211,6 +227,121 @@ router.post("/admin/login", (req, res) => {
   } catch (err) {
     console.error("Admin login error:", err);
     res.status(500).json({ error: "Login failed" });
+  }
+});
+
+// ==================== EMAIL VERIFICATION ====================
+
+// Verify Email - Validate verification code
+router.post("/verify-email", async (req, res) => {
+  try {
+    const { email, code } = req.body;
+
+    // Validation
+    if (!email || !code) {
+      return res.status(400).json({ error: "Email and verification code are required" });
+    }
+
+    // Find user
+    const user = db.prepare("SELECT * FROM users WHERE email = ?").get(email.toLowerCase());
+
+    if (!user) {
+      return res.status(400).json({ error: "Invalid email or verification code" });
+    }
+
+    // Check if already verified
+    if (user.email_verified === 1) {
+      return res.status(400).json({ error: "Email is already verified" });
+    }
+
+    // Find valid verification token
+    const verificationTokenRecord = db.prepare(`
+      SELECT * FROM email_verification_tokens
+      WHERE user_id = ? AND token = ? AND used = 0
+      ORDER BY created_at DESC
+      LIMIT 1
+    `).get(user.id, code);
+
+    if (!verificationTokenRecord) {
+      return res.status(400).json({ error: "Invalid or expired verification code" });
+    }
+
+    // Check if token is expired
+    const expiresAt = new Date(verificationTokenRecord.expires_at);
+    if (expiresAt < new Date()) {
+      return res.status(400).json({ error: "Verification code has expired. Please request a new one." });
+    }
+
+    // Update user email_verified status
+    db.prepare("UPDATE users SET email_verified = 1 WHERE id = ?").run(user.id);
+
+    // Mark token as used
+    db.prepare("UPDATE email_verification_tokens SET used = 1 WHERE id = ?").run(verificationTokenRecord.id);
+
+    // Generate JWT token for automatic login
+    const token = generateToken(user.id, "user", user.email);
+
+    res.json({
+      message: "Email verified successfully",
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
+  } catch (err) {
+    console.error("Email verification error:", err);
+    res.status(500).json({ error: "Failed to verify email" });
+  }
+});
+
+// Resend Verification Code
+router.post("/resend-verification", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+
+    // Find user
+    const user = db.prepare("SELECT * FROM users WHERE email = ?").get(email.toLowerCase());
+
+    if (!user) {
+      return res.json({
+        message: "If an account exists with this email, you will receive a verification code."
+      });
+    }
+
+    // Check if already verified
+    if (user.email_verified === 1) {
+      return res.status(400).json({ error: "Email is already verified" });
+    }
+
+    // Generate new verification code
+    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const tokenId = uuidv4();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+    // Store verification token in database
+    db.prepare(`
+      INSERT INTO email_verification_tokens (id, user_id, token, expires_at)
+      VALUES (?, ?, ?, ?)
+    `).run(tokenId, user.id, verificationCode, expiresAt.toISOString());
+
+    // Send verification email
+    await sendVerificationEmail(email.toLowerCase(), verificationCode);
+
+    res.json({
+      message: "Verification code sent successfully",
+      // Include verification code in development for testing
+      verificationCode: process.env.NODE_ENV === "development" ? verificationCode : undefined
+    });
+  } catch (err) {
+    console.error("Resend verification error:", err);
+    res.status(500).json({ error: "Failed to resend verification code" });
   }
 });
 

@@ -157,6 +157,66 @@ function App() {
     navigate("/login");
   };
 
+  const closeTicket = async (ticketId) => {
+    // Show modal to get close reason
+    const reasons = [
+      { value: "Issue resolved", label: "Issue resolved" },
+      { value: "No longer needed", label: "No longer needed" },
+      { value: "Found solution elsewhere", label: "Found solution elsewhere" },
+      { value: "Duplicate ticket", label: "Duplicate ticket" },
+      { value: "Other", label: "Other" }
+    ];
+
+    // Create custom modal content
+    const modalContent = (
+      <div>
+        <p>Are you sure you want to close this ticket? Once closed, you cannot reopen it or add more replies.</p>
+        <p style={{ marginTop: "1rem", fontWeight: "bold" }}>Please select a reason:</p>
+      </div>
+    );
+
+    // For now, show confirmation and use a default reason
+    // We'll implement a better modal with dropdown selection next
+    const confirmed = window.confirm("Are you sure you want to close this ticket? Once closed, you cannot reopen it.\n\nReason: Issue resolved");
+
+    if (!confirmed) return;
+
+    const closeReason = "Issue resolved"; // Default for now
+    const userEmail = localStorage.getItem("userEmail");
+
+    setLoading(true);
+    setLoadingAction('close');
+
+    try {
+      await axios.post(`http://localhost:4000/tickets/${ticketId}/close`, {
+        closedBy: "user",
+        closeReason,
+        userEmail
+      });
+
+      setModal({
+        isOpen: true,
+        title: "Ticket Closed",
+        message: "Your ticket has been closed successfully. You can still view the conversation history.",
+        type: "success",
+      });
+
+      await fetchTickets();
+    } catch (err) {
+      console.error(err);
+      const errorMessage = err.response?.data?.error || "Failed to close ticket. Please try again.";
+      setModal({
+        isOpen: true,
+        title: "Error",
+        message: errorMessage,
+        type: "error",
+      });
+    } finally {
+      setLoading(false);
+      setLoadingAction(null);
+    }
+  };
+
   const userEmail = localStorage.getItem("userEmail") || "User";
 
   return (
@@ -323,7 +383,23 @@ function App() {
             </div>
           ) : (
             tickets.map((ticket) => (
-              <div key={ticket.id} className="ticket-card">
+              <div key={ticket.id} className={`ticket-card ${ticket.status === 'closed' ? 'ticket-closed' : ''}`}>
+                {/* Closed Banner */}
+                {ticket.status === 'closed' && (
+                  <div className="ticket-closed-banner">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10" />
+                      <path d="M9 9h6v6H9z" />
+                    </svg>
+                    TICKET CLOSED
+                    {ticket.closed_at && (
+                      <span style={{ marginLeft: "1rem", fontSize: "0.85rem", opacity: 0.8 }}>
+                        Closed on {new Date(ticket.closed_at).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 {/* Ticket Header */}
                 <div className="ticket-header">
                   <div className="ticket-info">
@@ -331,6 +407,9 @@ function App() {
                     <span className="ticket-email">{ticket.email}</span>
                   </div>
                   <div className="ticket-meta">
+                    {ticket.status === 'closed' && (
+                      <span className="status-badge status-closed">CLOSED</span>
+                    )}
                     <div className="ticket-intent">
                       <span className="intent-label">Intent:</span>
                       <span className="intent-value">{ticket.intent || "Unknown"}</span>
@@ -374,41 +453,76 @@ function App() {
                         </div>
                       ))}
 
-                    {/* Reply Input */}
-                    <div className="reply-container">
-                      <div className="reply-input-wrapper">
-                        <input
-                          type="text"
-                          className="reply-input"
-                          placeholder="Type your reply..."
-                          value={replyText[ticket.id] || ""}
-                          onChange={(e) =>
-                            setReplyText((prev) => ({ ...prev, [ticket.id]: e.target.value }))
-                          }
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && replyText[ticket.id]?.trim()) {
-                              submitGuestReply(ticket.id, replyText[ticket.id].trim());
-                              setReplyText((prev) => ({ ...prev, [ticket.id]: "" }));
-                            }
-                          }}
-                        />
-                        <button
-                          className="btn btn-primary"
-                          onClick={() => {
-                            if (replyText[ticket.id]?.trim()) {
-                              submitGuestReply(ticket.id, replyText[ticket.id].trim());
-                              setReplyText((prev) => ({ ...prev, [ticket.id]: "" }));
-                            }
-                          }}
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <line x1="22" y1="2" x2="11" y2="13" />
-                            <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                          </svg>
-                          Send
-                        </button>
+                    {/* Reply Input or Closed Message */}
+                    {ticket.status === 'closed' ? (
+                      <div className="ticket-closed-message">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <circle cx="12" cy="12" r="10" />
+                          <line x1="12" y1="8" x2="12" y2="12" />
+                          <line x1="12" y1="16" x2="12.01" y2="16" />
+                        </svg>
+                        <p>This ticket is closed. You cannot add more replies.</p>
+                        {ticket.close_reason && (
+                          <p style={{ fontSize: "0.9rem", marginTop: "0.5rem" }}>
+                            <strong>Reason:</strong> {ticket.close_reason}
+                          </p>
+                        )}
+                        <p style={{ fontSize: "0.85rem", marginTop: "0.5rem", opacity: 0.7 }}>
+                          Create a new ticket for new issues.
+                        </p>
                       </div>
-                    </div>
+                    ) : (
+                      <>
+                        <div className="reply-container">
+                          <div className="reply-input-wrapper">
+                            <input
+                              type="text"
+                              className="reply-input"
+                              placeholder="Type your reply..."
+                              value={replyText[ticket.id] || ""}
+                              onChange={(e) =>
+                                setReplyText((prev) => ({ ...prev, [ticket.id]: e.target.value }))
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" && replyText[ticket.id]?.trim()) {
+                                  submitGuestReply(ticket.id, replyText[ticket.id].trim());
+                                  setReplyText((prev) => ({ ...prev, [ticket.id]: "" }));
+                                }
+                              }}
+                            />
+                            <button
+                              className="btn btn-primary"
+                              onClick={() => {
+                                if (replyText[ticket.id]?.trim()) {
+                                  submitGuestReply(ticket.id, replyText[ticket.id].trim());
+                                  setReplyText((prev) => ({ ...prev, [ticket.id]: "" }));
+                                }
+                              }}
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <line x1="22" y1="2" x2="11" y2="13" />
+                                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                              </svg>
+                              Send
+                            </button>
+                          </div>
+                        </div>
+                        {/* Close Ticket Button */}
+                        <div style={{ marginTop: "1rem", display: "flex", justifyContent: "flex-end" }}>
+                          <button
+                            className="btn btn-secondary"
+                            onClick={() => closeTicket(ticket.id)}
+                            style={{ fontSize: "0.9rem" }}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <circle cx="12" cy="12" r="10" />
+                              <path d="M15 9l-6 6M9 9l6 6" />
+                            </svg>
+                            Close Ticket
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>

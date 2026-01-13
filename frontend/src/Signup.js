@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import "./App.css";
+import Modal from "./components/Modal";
 
 export default function Signup() {
   const [name, setName] = useState("");
@@ -11,6 +12,7 @@ export default function Signup() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [darkMode, setDarkMode] = useState(true);
+  const [modal, setModal] = useState({ isOpen: false, title: "", message: "", type: "info" });
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -56,12 +58,18 @@ export default function Signup() {
         password,
       });
 
-      // Save token and user info
-      localStorage.setItem("userToken", response.data.token);
-      localStorage.setItem("userEmail", response.data.user.email);
-      localStorage.setItem("userName", response.data.user.name);
+      // Show success modal and redirect to verification page
+      setModal({
+        isOpen: true,
+        title: "Account Created!",
+        message: "Please check your email for a verification code to complete your registration.",
+        type: "success",
+      });
 
-      navigate("/");
+      // Redirect to verification page after 2 seconds
+      setTimeout(() => {
+        navigate(`/verify-email?email=${encodeURIComponent(email.toLowerCase())}`);
+      }, 2000);
     } catch (err) {
       const errorMessage = err.response?.data?.error || "Failed to create account. Please try again.";
       setError(errorMessage);
@@ -72,6 +80,15 @@ export default function Signup() {
 
   return (
     <div className="app-container">
+      {/* Modal */}
+      <Modal
+        isOpen={modal.isOpen}
+        onClose={() => setModal({ ...modal, isOpen: false })}
+        title={modal.title}
+        message={modal.message}
+        type={modal.type}
+      />
+
       {/* Loading Overlay */}
       {loading && (
         <div className="loading-overlay">

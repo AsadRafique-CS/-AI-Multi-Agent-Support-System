@@ -22,6 +22,7 @@ A full-stack intelligent support ticket system powered by **Claude AI** (Anthrop
 - **Transparency**: Shows similarity percentage to users
 
 ### 🔐 Complete Authentication System
+- **Email Verification**: Users must verify email before login (6-digit code, 15-minute expiry)
 - User signup and login with JWT tokens (7-day expiry)
 - Admin login with secure credentials
 - Protected routes for users and admins
@@ -30,10 +31,13 @@ A full-stack intelligent support ticket system powered by **Claude AI** (Anthrop
 - Rate limiting removed on auth endpoints for seamless experience
 
 ### 📧 Email Integration
+- **Email verification codes** on signup
 - Automated ticket confirmation emails
 - Agent reply notifications
+- **Ticket closure notifications** with reason
 - Password reset emails with secure tokens
 - Gmail and custom SMTP support
+- Resend verification code functionality
 
 ### 🎯 Ticket Management
 - **User Dashboard**:
@@ -42,11 +46,25 @@ A full-stack intelligent support ticket system powered by **Claude AI** (Anthrop
   - Search tickets by ID or email
   - Filter by status (open/answered/closed)
   - Real-time conversation threading
+  - **Close tickets** with required reason
+  - View closed ticket history
 - **Admin Dashboard**:
   - View all tickets across all users
   - Advanced search and filtering
   - Moderate agent responses
   - Reassign tickets to different agents
+  - **Close tickets** with custom reason
+
+### 🎫 Ticket Lifecycle Management
+- **Ticket Closing**:
+  - Users and admins can close tickets
+  - Close reason required (Issue resolved, No longer needed, etc.)
+  - Closed tickets cannot be reopened
+  - Pending admin review messages auto-rejected on close
+  - Email notification sent to user
+  - Closed tickets remain viewable for history
+  - Clear visual indicators (red banner, CLOSED badge)
+  - Reply input disabled on closed tickets
 
 ### 🎨 Modern UI/UX
 - **Custom Modal System**: Beautiful, animated modals instead of browser alerts
@@ -148,10 +166,12 @@ Frontend runs on `http://localhost:3000`
 ### For Users
 
 1. **Sign Up**: Create an account at `/signup`
-2. **Login**: Access your dashboard at `/login`
-3. **Submit Ticket**: Describe your issue - AI will classify and route it
-4. **Track Progress**: View all your tickets with real-time updates
-5. **Reply**: Continue the conversation with support agents
+2. **Verify Email**: Enter 6-digit code sent to your email
+3. **Login**: Access your dashboard at `/login` (requires verified email)
+4. **Submit Ticket**: Describe your issue - AI will classify and route it
+5. **Track Progress**: View all your tickets with real-time updates
+6. **Reply**: Continue the conversation with support agents
+7. **Close Ticket**: Mark ticket as resolved when issue is fixed
 
 ### For Admins
 
@@ -160,7 +180,8 @@ Frontend runs on `http://localhost:3000`
    - Password: `A1s2d3@f`
 2. **Review Tickets**: See all tickets across all users
 3. **Moderate**: Approve, edit, reject, or reassign agent responses
-4. **Search & Filter**: Find tickets by status, email, or ticket ID
+4. **Close Tickets**: Close tickets with custom reason
+5. **Search & Filter**: Find tickets by status, email, or ticket ID
 
 ## 📡 API Endpoints
 
@@ -168,8 +189,10 @@ Frontend runs on `http://localhost:3000`
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/auth/signup` | Register new user |
-| POST | `/auth/login` | User login (no rate limit) |
+| POST | `/auth/signup` | Register new user (sends verification email) |
+| POST | `/auth/verify-email` | Verify email with 6-digit code |
+| POST | `/auth/resend-verification` | Resend verification code |
+| POST | `/auth/login` | User login (requires verified email, no rate limit) |
 | POST | `/auth/admin/login` | Admin login (no rate limit) |
 | POST | `/auth/forgot-password` | Request password reset |
 | POST | `/auth/reset-password` | Reset password with token |
@@ -183,7 +206,8 @@ Frontend runs on `http://localhost:3000`
 | GET | `/tickets?email=user@example.com&page=1&limit=10` | Get user's tickets |
 | GET | `/tickets?search=query&status=open` | Search and filter tickets |
 | POST | `/tickets` | Create new ticket (with auto-deduplication) |
-| POST | `/tickets/:id/messages` | Add reply to ticket |
+| POST | `/tickets/:id/messages` | Add reply to ticket (blocked if closed) |
+| POST | `/tickets/:id/close` | Close ticket (user or admin) |
 | POST | `/tickets/:id/admin-action` | Admin actions (approve/edit/reject/reassign) |
 
 ### Request/Response Examples
@@ -263,6 +287,7 @@ ai-multi-agent-support-system/
 │       ├── App.js                 # User dashboard
 │       ├── Login.js               # User login page
 │       ├── Signup.js              # User signup page
+│       ├── VerifyEmail.js         # Email verification page
 │       ├── AdminLogin.js          # Admin login page
 │       ├── AdminDashboard.js      # Admin dashboard
 │       ├── TicketView.js          # Ticket detail view
@@ -285,6 +310,7 @@ CREATE TABLE users (
   email TEXT UNIQUE NOT NULL,
   password TEXT NOT NULL,
   role TEXT DEFAULT 'user',
+  email_verified INTEGER DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 )
 ```
@@ -308,6 +334,9 @@ CREATE TABLE tickets (
   status TEXT DEFAULT 'open',
   confidence REAL,
   intent TEXT,
+  closed_at DATETIME,
+  closed_by TEXT,
+  close_reason TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 )
 ```
@@ -329,6 +358,19 @@ CREATE TABLE messages (
 ### Password Reset Tokens Table
 ```sql
 CREATE TABLE password_reset_tokens (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  token TEXT UNIQUE NOT NULL,
+  expires_at DATETIME NOT NULL,
+  used INTEGER DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(user_id) REFERENCES users(id)
+)
+```
+
+### Email Verification Tokens Table
+```sql
+CREATE TABLE email_verification_tokens (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
   token TEXT UNIQUE NOT NULL,
@@ -400,23 +442,66 @@ If no match → Create new ticket
 - Frontend additionally sorts for reliability
 - Result: Perfect chronological conversation flow
 
+### 4. Email Verification Flow
+```
+User signs up
+  ↓
+Account created with email_verified = 0
+  ↓
+6-digit verification code generated (15-min expiry)
+  ↓
+Verification email sent to user
+  ↓
+User enters code on /verify-email page
+  ↓
+Code validated → email_verified = 1
+  ↓
+User automatically logged in
+  ↓
+Can now access dashboard
+```
+
+### 5. Ticket Closing Flow
+```
+User/Admin clicks "Close Ticket"
+  ↓
+Close reason required (Issue resolved, etc.)
+  ↓
+Confirmation dialog shown
+  ↓
+User confirms closure
+  ↓
+Backend: status = 'closed', closed_at, closed_by, close_reason saved
+  ↓
+All pending admin review messages auto-rejected
+  ↓
+Email notification sent to user
+  ↓
+Reply input disabled, closed banner shown
+  ↓
+Ticket remains viewable but cannot be reopened
+```
+
 ## 🚦 Features Checklist
 
 - [x] JWT authentication with 7-day expiry ✅
+- [x] Email verification on signup ✅
 - [x] Password reset via email ✅
 - [x] Rate limiting on APIs ✅
 - [x] Pagination and search ✅
 - [x] Claude AI multi-agent system ✅
 - [x] Ticket deduplication with AI ✅
+- [x] Ticket closing (user & admin) ✅
+- [x] Email notifications (verification, reset, closure) ✅
 - [x] Custom modal system ✅
 - [x] Dark/light theme toggle ✅
 - [x] Chronological message ordering ✅
 - [x] No rate limit on auth endpoints ✅
 - [ ] Bcrypt for password hashing (currently SHA-256)
-- [ ] Email verification on signup
 - [ ] WebSocket for real-time updates
 - [ ] File attachments
 - [ ] Refresh token mechanism
+- [ ] Ticket reopening (intentionally excluded)
 
 ## 🐛 Known Issues
 
@@ -431,6 +516,12 @@ If no match → Create new ticket
 
 **Issue**: Email not sending
 - **Solution**: Generate new Gmail App Password and update `EMAIL_PASS` in `.env`
+
+**Issue**: Cannot login after signup
+- **Solution**: Check your email for verification code. Email must be verified before login.
+
+**Issue**: "Cannot add messages to a closed ticket" error
+- **Solution**: Ticket is closed. Create a new ticket for new issues.
 
 **Issue**: "Cannot find module" errors
 - **Solution**: Run `npm install` in both backend and frontend directories

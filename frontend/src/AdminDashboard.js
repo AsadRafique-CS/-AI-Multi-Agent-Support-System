@@ -66,6 +66,38 @@ export default function AdminDashboard() {
     }
   };
 
+  const closeTicket = async (ticketId) => {
+    const closeReason = prompt("Enter reason for closing this ticket:");
+
+    if (!closeReason || !closeReason.trim()) {
+      alert("Close reason is required");
+      return;
+    }
+
+    const confirmed = window.confirm(`Are you sure you want to close this ticket?\n\nReason: ${closeReason}\n\nOnce closed, the ticket cannot be reopened.`);
+    if (!confirmed) return;
+
+    setLoading(true);
+    setLoadingAction('close');
+
+    try {
+      await axios.post(`http://localhost:4000/tickets/${ticketId}/close`, {
+        closedBy: "admin",
+        closeReason: closeReason.trim()
+      });
+
+      alert("Ticket closed successfully. User has been notified via email.");
+      await fetchTickets();
+    } catch (err) {
+      console.error(err);
+      const errorMessage = err.response?.data?.error || "Failed to close ticket. Please try again.";
+      alert(errorMessage);
+    } finally {
+      setLoading(false);
+      setLoadingAction(null);
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem("adminToken");
     localStorage.removeItem("adminEmail");
@@ -94,6 +126,7 @@ export default function AdminDashboard() {
     switch (loadingAction) {
       case "admin": return "Processing action...";
       case "fetch": return "Loading tickets...";
+      case "close": return "Closing ticket...";
       default: return "Loading...";
     }
   };
@@ -199,6 +232,12 @@ export default function AdminDashboard() {
               </span>
               <span className="stat-label">Pending Review</span>
             </div>
+            <div className="stat-badge closed">
+              <span className="stat-count">
+                {tickets.filter(t => t.status === "closed").length}
+              </span>
+              <span className="stat-label">Closed</span>
+            </div>
           </div>
         </div>
 
@@ -249,7 +288,24 @@ export default function AdminDashboard() {
             </div>
           ) : (
             tickets.map((ticket) => (
-              <div key={ticket.id} className="ticket-card">
+              <div key={ticket.id} className={`ticket-card ${ticket.status === 'closed' ? 'ticket-closed' : ''}`}>
+                {/* Closed Banner */}
+                {ticket.status === 'closed' && (
+                  <div className="ticket-closed-banner">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="15" y1="9" x2="9" y2="15" />
+                      <line x1="9" y1="9" x2="15" y2="15" />
+                    </svg>
+                    TICKET CLOSED
+                    {ticket.closed_at && (
+                      <span style={{ marginLeft: "auto", fontSize: "0.8rem", opacity: 0.9 }}>
+                        Closed on {new Date(ticket.closed_at).toLocaleDateString()} at {new Date(ticket.closed_at).toLocaleTimeString()}
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 {/* Ticket Header */}
                 <div className="ticket-header">
                   <div className="ticket-info">
@@ -257,6 +313,9 @@ export default function AdminDashboard() {
                     <span className="ticket-email">{ticket.email}</span>
                   </div>
                   <div className="ticket-meta">
+                    {ticket.status === 'closed' && (
+                      <span className="status-badge status-closed">CLOSED</span>
+                    )}
                     <div className="ticket-intent">
                       <span className="intent-label">Intent:</span>
                       <span className="intent-value">{ticket.intent || "Unknown"}</span>
@@ -312,7 +371,7 @@ export default function AdminDashboard() {
                           </div>
 
                           {/* Admin Controls */}
-                          {(msg.status === "pending" || msg.status === "low-confidence") && msg.sender === "agent" && (
+                          {(msg.status === "pending" || msg.status === "low-confidence") && msg.sender === "agent" && ticket.status !== 'closed' && (
                             <div className="admin-controls">
                               <textarea
                                 className="admin-textarea"
@@ -366,6 +425,21 @@ export default function AdminDashboard() {
                             </div>
                           )}
 
+                          {/* Show message if ticket is closed and message is pending */}
+                          {(msg.status === "pending" || msg.status === "low-confidence") && msg.sender === "agent" && ticket.status === 'closed' && (
+                            <div style={{
+                              marginTop: "0.75rem",
+                              padding: "0.75rem",
+                              background: "rgba(239, 68, 68, 0.1)",
+                              border: "1px solid rgba(239, 68, 68, 0.3)",
+                              borderRadius: "var(--radius-md)",
+                              fontSize: "0.875rem",
+                              color: "var(--text-secondary)"
+                            }}>
+                              ⚠️ This message was auto-rejected when the ticket was closed.
+                            </div>
+                          )}
+
                           {/* Failed Message Warning */}
                           {msg.status === "failed" && (
                             <div className="failed-warning">
@@ -379,7 +453,7 @@ export default function AdminDashboard() {
                           )}
 
                           {/* Escalated Message Panel */}
-                          {msg.status === "escalated" && (
+                          {msg.status === "escalated" && ticket.status !== 'closed' && (
                             <div className="escalated-panel">
                               <div className="escalated-title">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -405,11 +479,73 @@ export default function AdminDashboard() {
                               </button>
                             </div>
                           )}
+
+                          {/* Show message if escalated but ticket is closed */}
+                          {msg.status === "escalated" && ticket.status === 'closed' && (
+                            <div style={{
+                              marginTop: "0.75rem",
+                              padding: "0.75rem",
+                              background: "rgba(239, 68, 68, 0.1)",
+                              border: "1px solid rgba(239, 68, 68, 0.3)",
+                              borderRadius: "var(--radius-md)",
+                              fontSize: "0.875rem",
+                              color: "var(--text-secondary)"
+                            }}>
+                              ⚠️ This escalated message cannot be responded to because the ticket is closed.
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
                   </div>
                 </div>
+
+                {/* Close Metadata and Actions */}
+                {ticket.status === 'closed' ? (
+                  <div className="ticket-closed-metadata" style={{
+                    padding: "1rem 1.25rem",
+                    background: "var(--bg-secondary)",
+                    borderTop: "1px solid var(--border-color)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "0.5rem"
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "var(--text-secondary)", fontSize: "0.875rem" }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <polyline points="12 6 12 12 16 14" />
+                      </svg>
+                      <strong>Closed by:</strong> {ticket.closed_by === 'admin' ? 'Admin' : 'User'}
+                    </div>
+                    {ticket.close_reason && (
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "var(--text-secondary)", fontSize: "0.875rem" }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                          <polyline points="14 2 14 8 20 8" />
+                        </svg>
+                        <strong>Reason:</strong> {ticket.close_reason}
+                      </div>
+                    )}
+                    <div style={{ marginTop: "0.5rem", padding: "0.75rem", background: "var(--bg-primary)", borderRadius: "var(--radius-md)", fontSize: "0.875rem", color: "var(--text-secondary)" }}>
+                      ℹ️ This ticket is closed and cannot be reopened. Admin actions are disabled.
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ padding: "1rem 1.25rem", borderTop: "1px solid var(--border-color)", display: "flex", justifyContent: "flex-end" }}>
+                    <button
+                      className="btn btn-danger btn-sm"
+                      onClick={() => closeTicket(ticket.id)}
+                      disabled={loading}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="15" y1="9" x2="9" y2="15" />
+                        <line x1="9" y1="9" x2="15" y2="15" />
+                      </svg>
+                      Close Ticket
+                    </button>
+                  </div>
+                )}
               </div>
             ))
           )}

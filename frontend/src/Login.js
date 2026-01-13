@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import "./App.css";
+import Modal from "./components/Modal";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -9,6 +10,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [darkMode, setDarkMode] = useState(true);
+  const [modal, setModal] = useState({ isOpen: false, title: "", message: "", type: "info" });
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -41,8 +43,31 @@ export default function Login() {
 
       navigate("/");
     } catch (err) {
-      const errorMessage = err.response?.data?.error || "Login failed. Please try again.";
-      setError(errorMessage);
+      // Check if email is not verified
+      if (err.response?.data?.emailNotVerified) {
+        const userEmail = err.response.data.email;
+        setModal({
+          isOpen: true,
+          title: "Email Not Verified",
+          message: "Please verify your email address before logging in. Check your inbox for the verification code.",
+          type: "warning",
+          actions: [
+            {
+              label: "Verify Now",
+              variant: "primary",
+              onClick: () => navigate(`/verify-email?email=${encodeURIComponent(userEmail)}`),
+            },
+            {
+              label: "Cancel",
+              variant: "secondary",
+              onClick: () => {},
+            },
+          ],
+        });
+      } else {
+        const errorMessage = err.response?.data?.error || "Login failed. Please try again.";
+        setError(errorMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -50,6 +75,16 @@ export default function Login() {
 
   return (
     <div className="app-container">
+      {/* Modal */}
+      <Modal
+        isOpen={modal.isOpen}
+        onClose={() => setModal({ ...modal, isOpen: false })}
+        title={modal.title}
+        message={modal.message}
+        type={modal.type}
+        actions={modal.actions}
+      />
+
       {/* Loading Overlay */}
       {loading && (
         <div className="loading-overlay">

@@ -250,3 +250,99 @@ export async function sendPasswordResetEmail(email, resetToken) {
     return false;
   }
 }
+
+// Send email verification code
+export async function sendVerificationEmail(email, verificationCode) {
+  try {
+    initTransporter(); // ensure transporter is ready
+
+    if (!transporter) {
+      console.error("❌ Email transporter not initialized. Check EMAIL_USER and EMAIL_PASS in .env");
+      return false;
+    }
+
+    const verifyLink = `http://localhost:3000/verify-email?email=${encodeURIComponent(email)}`;
+
+    await transporter.sendMail({
+      from: `"Support Hub" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "Email Verification Code - Support Hub",
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #333;">Welcome to Support Hub!</h2>
+          <p>Thank you for signing up. Please verify your email address using the code below:</p>
+
+          <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0;">
+            <h1 style="color: #2563eb; font-size: 32px; letter-spacing: 8px; margin: 0;">${verificationCode}</h1>
+          </div>
+
+          <p>Or click this link to verify your email:</p>
+          <p><a href="${verifyLink}" style="color: #2563eb; text-decoration: none; font-weight: bold;">${verifyLink}</a></p>
+
+          <p style="color: #666; font-size: 14px; margin-top: 30px;">
+            <strong>Note:</strong> This code will expire in 15 minutes.
+          </p>
+
+          <p style="color: #999; font-size: 12px; margin-top: 20px; border-top: 1px solid #eee; padding-top: 20px;">
+            If you didn't create this account, please ignore this email.
+          </p>
+        </div>
+      `,
+    });
+
+    console.log("✅ Verification email sent to:", email);
+    return true;
+  } catch (err) {
+    console.error("❌ Failed to send verification email:", err.message);
+    return false;
+  }
+}
+
+// Send ticket closure notification
+export async function sendTicketClosureEmail(email, ticketId, closedBy, closeReason) {
+  try {
+    initTransporter(); // ensure transporter is ready
+
+    if (!transporter) {
+      console.error("❌ Email transporter not initialized. Check EMAIL_USER and EMAIL_PASS in .env");
+      return false;
+    }
+
+    const ticketLink = `http://localhost:3000/ticket/${ticketId}`;
+    const closedByText = closedBy === "admin" ? "our support team" : "you";
+
+    await transporter.sendMail({
+      from: `"Support Hub" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "Your Support Ticket Has Been Closed",
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #333;">Ticket Closed</h2>
+          <p>Your support ticket has been closed by ${closedByText}.</p>
+
+          <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <p style="margin: 0 0 10px 0;"><strong>Ticket ID:</strong> ${ticketId.substring(0, 8)}</p>
+            <p style="margin: 0;"><strong>Reason:</strong> ${closeReason}</p>
+          </div>
+
+          <p>You can still view the conversation history at:</p>
+          <p><a href="${ticketLink}" style="color: #2563eb; text-decoration: none; font-weight: bold;">${ticketLink}</a></p>
+
+          <p style="color: #666; font-size: 14px; margin-top: 30px;">
+            If you have a new issue, please create a new support ticket.
+          </p>
+
+          <p style="color: #999; font-size: 12px; margin-top: 20px; border-top: 1px solid #eee; padding-top: 20px;">
+            Thank you for using Support Hub!
+          </p>
+        </div>
+      `,
+    });
+
+    console.log("✅ Ticket closure email sent to:", email);
+    return true;
+  } catch (err) {
+    console.error("❌ Failed to send ticket closure email:", err.message);
+    return false;
+  }
+}

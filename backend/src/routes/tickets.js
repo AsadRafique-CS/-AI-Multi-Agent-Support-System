@@ -3,7 +3,7 @@ import { v4 as uuid } from "uuid";
 import { classifyIntent } from "../orchestrator/orchestrator.js";
 import { RefundAgent, TechnicalAgent, GeneralAgent } from "../agents/agent.js";
 import { db } from "../db/db.js";
-import { sendTicketEmail, sendAgentReplyEmail } from "../utils/email.js";
+import { sendTicketEmail, sendAgentReplyEmail, sendTicketClosureEmail } from "../utils/email.js";
 import { ticketCreationLimiter, adminActionLimiter } from "../middleware/rateLimit.js";
 import { findSimilarTicket } from "../utils/similarity.js";
 const router = express.Router();
@@ -270,6 +270,70 @@ router.post("/:ticketId/admin-action", adminActionLimiter, async (req, res) => {
   }
 });
 
+// POST close ticket
+router.post("/:ticketId/close", async (req, res) => {
+  const { ticketId } = req.params;
+  const { closedBy, closeReason, userEmail } = req.body;
+
+  // Validation
+  if (!closedBy || !closeReason) {
+    return res.status(400).json({ error: "closedBy and closeReason are required" });
+  }
+
+  if (!["user", "admin"].includes(closedBy)) {
+    return res.status(400).json({ error: "closedBy must be 'user' or 'admin'" });
+  }
+
+  try {
+    // Get ticket
+    const ticket = db.prepare("SELECT * FROM tickets WHERE id = ?").get(ticketId);
+    if (!ticket) {
+      return res.status(404).json({ error: "Ticket not found" });
+    }
+
+    // Check if already closed
+    if (ticket.status === "closed") {
+      return res.status(400).json({ error: "Ticket is already closed" });
+    }
+
+    // If user is closing, verify they own the ticket
+    if (closedBy === "user" && userEmail) {
+      if (ticket.email.toLowerCase() !== userEmail.toLowerCase()) {
+        return res.status(403).json({ error: "You can only close your own tickets" });
+      }
+    }
+
+    // Auto-reject all pending admin review messages
+    db.prepare(`
+      UPDATE messages
+      SET status = 'rejected'
+      WHERE ticket_id = ? AND status IN ('pending', 'low-confidence')
+    `).run(ticketId);
+
+    // Close the ticket
+    const closedAt = new Date().toISOString();
+    db.prepare(`
+      UPDATE tickets
+      SET status = 'closed', closed_at = ?, closed_by = ?, close_reason = ?
+      WHERE id = ?
+    `).run(closedAt, closedBy, closeReason.trim(), ticketId);
+
+    // Send email notification to user
+    await sendTicketClosureEmail(ticket.email, ticketId, closedBy, closeReason.trim());
+
+    res.json({
+      success: true,
+      message: "Ticket closed successfully",
+      closedAt,
+      closedBy,
+      closeReason: closeReason.trim()
+    });
+  } catch (err) {
+    console.error("Close ticket error:", err);
+    res.status(500).json({ error: "Failed to close ticket" });
+  }
+});
+
 // POST guest reply to an existing ticket
 router.post("/:ticketId/messages", ticketCreationLimiter, async (req, res) => {
   const { ticketId } = req.params;
@@ -278,15 +342,24 @@ router.post("/:ticketId/messages", ticketCreationLimiter, async (req, res) => {
   if (!sender || !text) return res.status(400).json({ error: "Sender & text required" });
 
   try {
+    // Check if ticket exists and is not closed
+    const ticket = db.prepare("SELECT * FROM tickets WHERE id = ?").get(ticketId);
+    if (!ticket) return res.status(404).json({ error: "Ticket not found" });
+
+    if (ticket.status === "closed") {
+      return res.status(400).json({
+        error: "Cannot add messages to a closed ticket. Please create a new ticket.",
+        ticketClosed: true
+      });
+    }
+
     // 1️⃣ Save the guest message
     const messageId = uuid();
     db.prepare(
       "INSERT INTO messages (id, ticket_id, sender, content, status) VALUES (?, ?, ?, ?, ?)"
     ).run(messageId, ticketId, sender, text, "sent");
 
-    // 2️⃣ Fetch ticket info for email & context
-    const ticket = db.prepare("SELECT * FROM tickets WHERE id = ?").get(ticketId);
-    if (!ticket) return res.status(404).json({ error: "Ticket not found" });
+    // 2️⃣ Ticket info already fetched above
 
     // 3️⃣ Classify intent of the new message
     const classification = await classifyIntent(text);
