@@ -5,6 +5,7 @@ import { RefundAgent, TechnicalAgent, GeneralAgent } from "../agents/agent.js";
 import { db } from "../db/db.js";
 import { sendTicketEmail, sendAgentReplyEmail } from "../utils/email.js";
 import { ticketCreationLimiter, adminActionLimiter } from "../middleware/rateLimit.js";
+import { findSimilarTicket } from "../utils/similarity.js";
 const router = express.Router();
 
 // GET all tickets with messages (with pagination and search)
@@ -92,7 +93,53 @@ router.post("/", ticketCreationLimiter, async (req, res) => {
     return res.status(400).json({ error: "Email & message required" });
   }
 
-  // Create new ticket
+  // Check for similar existing tickets
+  console.log("🔍 Checking for similar tickets...");
+  const { ticket: similarTicket, similarity } = await findSimilarTicket(email, message);
+
+  if (similarTicket) {
+    // Merge with existing ticket
+    console.log(`🔀 Merging with existing ticket: ${similarTicket.id}`);
+
+    // Add new message to existing ticket
+    const messageId = uuid();
+    db.prepare(
+      "INSERT INTO messages (id, ticket_id, sender, content, status) VALUES (?, ?, ?, ?, ?)"
+    ).run(messageId, similarTicket.id, "guest", message, "sent");
+
+    // Update ticket status to "open" if it was "answered"
+    if (similarTicket.status === "answered") {
+      db.prepare("UPDATE tickets SET status = 'open' WHERE id = ?").run(similarTicket.id);
+    }
+
+    // Classify the new message
+    let classification;
+    try {
+      classification = await classifyIntent(message);
+    } catch (err) {
+      console.error("Classification failed:", err);
+      classification = { intent: similarTicket.intent, confidence: similarTicket.confidence, reasoning: "Classification error" };
+    }
+
+    // Process the new message with agent
+    try {
+      await processNewGuestMessage(similarTicket.id, message, classification.intent, email, classification.confidence);
+    } catch (err) {
+      console.error("Error processing merged ticket message:", err);
+    }
+
+    // Return response indicating merge
+    return res.json({
+      ticketId: similarTicket.id,
+      merged: true,
+      similarity: similarity.similarity,
+      message: `Your message was added to existing ticket #${similarTicket.id.substring(0, 8)}`,
+      classification,
+    });
+  }
+
+  // No similar ticket found - create new ticket
+  console.log("📝 Creating new ticket...");
   const ticketId = uuid();
   let classification;
   try {
@@ -120,7 +167,7 @@ router.post("/", ticketCreationLimiter, async (req, res) => {
     console.error("Error processing new ticket:", err);
   }
 
-  res.json({ ticketId, classification });
+  res.json({ ticketId, merged: false, classification });
 });
 
 

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import "./App.css";
+import Modal from "./components/Modal";
 
 function App() {
   const [message, setMessage] = useState("");
@@ -14,6 +15,7 @@ function App() {
   const [pagination, setPagination] = useState({ total: 0, totalPages: 0, page: 1, limit: 10 });
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [modal, setModal] = useState({ isOpen: false, title: "", message: "", type: "info" });
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -34,12 +36,45 @@ function App() {
         email: userEmail,
         message,
       });
-      alert("Ticket submitted! ID: " + res.data.ticketId);
+
+      if (res.data.merged) {
+        // Ticket was merged with existing ticket
+        setModal({
+          isOpen: true,
+          title: "Ticket Merged",
+          message: (
+            <div>
+              <p>{res.data.message}</p>
+              <p style={{ marginTop: "1rem", fontSize: "0.9rem", opacity: 0.8 }}>
+                Similarity: {res.data.similarity}%
+              </p>
+              <p style={{ marginTop: "0.5rem" }}>
+                Your message has been added to the existing conversation.
+              </p>
+            </div>
+          ),
+          type: "info",
+        });
+      } else {
+        // New ticket created
+        setModal({
+          isOpen: true,
+          title: "Success!",
+          message: `Ticket submitted successfully!\n\nTicket ID: ${res.data.ticketId.substring(0, 8)}`,
+          type: "success",
+        });
+      }
+
       setMessage("");
       await fetchTickets();
     } catch (err) {
       console.error(err);
-      alert("Failed to submit ticket");
+      setModal({
+        isOpen: true,
+        title: "Error",
+        message: "Failed to submit ticket. Please try again.",
+        type: "error",
+      });
     } finally {
       setLoading(false);
       setLoadingAction(null);
@@ -55,9 +90,20 @@ function App() {
         text,
       });
       await fetchTickets();
+      setModal({
+        isOpen: true,
+        title: "Reply Sent",
+        message: "Your reply has been sent successfully.",
+        type: "success",
+      });
     } catch (err) {
       console.error(err);
-      alert("Failed to send reply");
+      setModal({
+        isOpen: true,
+        title: "Error",
+        message: "Failed to send reply. Please try again.",
+        type: "error",
+      });
     } finally {
       setLoading(false);
       setLoadingAction(null);
@@ -115,6 +161,15 @@ function App() {
 
   return (
     <div className="app-container">
+      {/* Modal */}
+      <Modal
+        isOpen={modal.isOpen}
+        onClose={() => setModal({ ...modal, isOpen: false })}
+        title={modal.title}
+        message={modal.message}
+        type={modal.type}
+      />
+
       {/* Loading Overlay */}
       {loading && (
         <div className="loading-overlay">

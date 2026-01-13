@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import axios from "axios";
 import "./App.css";
+import Modal from "./components/Modal";
 
 export default function TicketView() {
   const { ticketId } = useParams();
@@ -10,6 +11,7 @@ export default function TicketView() {
   const [loading, setLoading] = useState(true);
   const [loadingAction, setLoadingAction] = useState(null); // 'fetch', 'reply'
   const [darkMode, setDarkMode] = useState(true);
+  const [modal, setModal] = useState({ isOpen: false, title: "", message: "", type: "info" });
 
   useEffect(() => {
     document.body.setAttribute('data-theme', darkMode ? 'dark' : 'light');
@@ -41,9 +43,20 @@ export default function TicketView() {
       });
       setReply("");
       await fetchTicket();
+      setModal({
+        isOpen: true,
+        title: "Success!",
+        message: "Your reply has been sent successfully.",
+        type: "success",
+      });
     } catch (err) {
       console.error(err);
-      alert("Failed to send reply");
+      setModal({
+        isOpen: true,
+        title: "Error",
+        message: "Failed to send reply. Please try again.",
+        type: "error",
+      });
     } finally {
       setLoading(false);
       setLoadingAction(null);
@@ -196,6 +209,15 @@ export default function TicketView() {
 
   return (
     <div className="app-container">
+      {/* Modal */}
+      <Modal
+        isOpen={modal.isOpen}
+        onClose={() => setModal({ ...modal, isOpen: false })}
+        title={modal.title}
+        message={modal.message}
+        type={modal.type}
+      />
+
       {/* Loading Overlay */}
       {loading && (
         <div className="loading-overlay">
