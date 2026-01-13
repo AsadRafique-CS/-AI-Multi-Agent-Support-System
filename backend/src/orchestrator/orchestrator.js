@@ -1,57 +1,110 @@
-import dotenv from "dotenv";
-dotenv.config();
+import Anthropic from "@anthropic-ai/sdk";
 
-import OpenAI from "openai";
+// Initialize Anthropic client
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
 
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-// export async function classifyIntent(message) {
-//   try {
-//     const response = await client.chat.completions.create({
-//       model: "gpt-4o-mini",
-//       messages: [
-//         {
-//           role: "system",
-//           content: `You are an AI Orchestrator. 
-// Classify user support messages into one of these intents:
-// - refund
-// - technical
-// - general
-// Return ONLY JSON: {"intent": "...", "confidence": 0-1, "reasoning": "..."}`
-//         },
-//         { role: "user", content: message }
-//       ],
-//       temperature: 0
-//     });
-
-//     const text = response.choices[0].message.content;
-//     return JSON.parse(text);
-
-//   } catch (err) {
-//     console.error("Orchestrator error:", err);
-//     return { intent: "general", confidence: 0, reasoning: "Error in classification" };
-//   }
-// }
-// Mock Orchestrator for development
-
-// Mock orchestrator - classifies message into refund, technical, or general
+// Intent classification using Claude
 export async function classifyIntent(message) {
+  try {
+    // If no API key, use fallback keyword-based classification
+    if (!process.env.ANTHROPIC_API_KEY) {
+      console.warn("⚠️ ANTHROPIC_API_KEY not set, using fallback classifier");
+      return fallbackClassifier(message);
+    }
+
+    const response = await anthropic.messages.create({
+      model: "claude-3-haiku-20240307",
+      max_tokens: 150,
+      system: `You are an AI Intent Classifier for a support ticket system.
+Classify user messages into ONE of these intents:
+- refund: For refund requests, order cancellations, payment issues, money back requests
+- technical: For bugs, errors, crashes, technical issues, how-to questions
+- general: For everything else (feedback, general questions, unclear messages)
+
+Respond ONLY with valid JSON in this exact format:
+{"intent": "refund|technical|general", "confidence": 0.0-1.0, "reasoning": "brief explanation"}
+
+Be accurate with confidence scores:
+- 0.8-1.0: Very clear intent
+- 0.5-0.7: Somewhat clear
+- 0.0-0.4: Unclear/ambiguous`,
+      messages: [
+        {
+          role: "user",
+          content: message,
+        },
+      ],
+    });
+
+    const text = response.content[0].text;
+
+    // Parse JSON response
+    const result = JSON.parse(text);
+
+    console.log(`📊 Intent: ${result.intent} (${Math.round(result.confidence * 100)}% confidence)`);
+
+    return {
+      intent: result.intent || "general",
+      confidence: result.confidence || 0.5,
+      reasoning: result.reasoning || "Claude classification",
+    };
+  } catch (err) {
+    console.error("Orchestrator error:", err.message);
+    return fallbackClassifier(message);
+  }
+}
+
+// Fallback keyword-based classifier when API is unavailable
+function fallbackClassifier(message) {
   message = message.toLowerCase();
 
   let intent = "general";
-  let confidence = 0.6; // high confidence for mock
-  let reasoning = "Simple keyword-based classification";
+  let confidence = 0.6;
+  let reasoning = "Fallback keyword-based classification";
 
-  if (message.includes("refund") || message.includes("cancel") || message.includes("money back")) {
+  // Refund keywords
+  if (
+    message.includes("refund") ||
+    message.includes("cancel") ||
+    message.includes("money back") ||
+    message.includes("return") ||
+    message.includes("charge") ||
+    message.includes("payment")
+  ) {
     intent = "refund";
-    confidence = 0.9;
-  } else if (message.includes("error") || message.includes("bug") || message.includes("crash")) {
+    confidence = 0.8;
+    reasoning = "Detected refund/payment related keywords";
+  }
+  // Technical keywords
+  else if (
+    message.includes("error") ||
+    message.includes("bug") ||
+    message.includes("crash") ||
+    message.includes("not working") ||
+    message.includes("broken") ||
+    message.includes("issue") ||
+    message.includes("problem") ||
+    message.includes("help") ||
+    message.includes("how to") ||
+    message.includes("can't")
+  ) {
     intent = "technical";
     confidence = 0.7;
-  } else if (message.includes("confused") || message.includes("not sure")) {
-    confidence = 0.4;
+    reasoning = "Detected technical/issue related keywords";
   }
+  // Low confidence for unclear messages
+  else if (
+    message.length < 10 ||
+    message.includes("confused") ||
+    message.includes("not sure")
+  ) {
+    confidence = 0.4;
+    reasoning = "Message is unclear or too short";
+  }
+
+  console.log(`📊 Intent (fallback): ${intent} (${Math.round(confidence * 100)}% confidence)`);
 
   return { intent, confidence, reasoning };
 }
-

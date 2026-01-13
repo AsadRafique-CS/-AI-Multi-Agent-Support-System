@@ -58,7 +58,7 @@ router.get("/", (req, res) => {
 
   const ticketsWithMessages = tickets.map((ticket) => {
     const messages = db
-      .prepare("SELECT * FROM messages WHERE ticket_id = ? ORDER BY created_at ASC")
+      .prepare("SELECT * FROM messages WHERE ticket_id = ? ORDER BY datetime(created_at) ASC")
       .all(ticket.id);
 
     return {
@@ -69,6 +69,7 @@ router.get("/", (req, res) => {
         content: m.content,
         reasoning: m.reasoning || "",
         status: m.status || "sent",
+        created_at: m.created_at,
       })),
     };
   });
