@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
-import "./App.css";
 import Modal from "./components/Modal";
 
 export default function VerifyEmail() {
@@ -112,7 +111,7 @@ export default function VerifyEmail() {
   };
 
   return (
-    <div className="app-container">
+    <div className="min-h-screen" style={{ background: 'var(--bg-primary)' }}>
       {/* Modal */}
       <Modal
         isOpen={modal.isOpen}
@@ -124,31 +123,34 @@ export default function VerifyEmail() {
 
       {/* Loading Overlay */}
       {loading && (
-        <div className="loading-overlay">
-          <div className="loading-spinner">
-            <div className="spinner"></div>
-            <p className="loading-text">Processing...</p>
+        <div className="fixed inset-0 flex items-center justify-center z-[1000] backdrop-blur-sm" style={{ background: 'var(--loading-bg)' }}>
+          <div className="flex flex-col items-center gap-5">
+            <div className="w-11 h-11 border-[3px] border-t-accent-primary rounded-full animate-spin" style={{ borderColor: 'var(--border-color)', borderTopColor: '#f97316' }}></div>
+            <p className="text-[0.9375rem] font-medium" style={{ color: 'var(--text-secondary)' }}>Processing...</p>
           </div>
         </div>
       )}
 
       {/* Header */}
-      <header className="app-header">
-        <div className="app-logo">
-          <div className="app-logo-icon">
+      <header className="border-b px-8 py-4 flex justify-between items-center backdrop-blur-xl" style={{ background: 'var(--header-bg)', borderColor: 'var(--border-color)' }}>
+        <div className="flex items-center gap-3">
+          <div className="w-[42px] h-[42px] bg-gradient-primary rounded-lg-custom flex items-center justify-center text-white shadow-glow">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>
           </div>
-          <span className="app-logo-text">Support Hub</span>
+          <span className="text-[1.375rem] font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>Support Hub</span>
         </div>
-        <div className="header-actions">
-          <Link to="/login" className="btn btn-secondary">
+        <div className="flex items-center gap-3">
+          <Link to="/login" className="inline-flex items-center justify-center gap-2 px-5 py-3 text-sm font-semibold rounded-lg-custom cursor-pointer transition-all duration-200 border no-underline" style={{ background: 'var(--bg-tertiary)', color: 'var(--text-primary)', borderColor: 'var(--border-color)' }} onMouseEnter={(e) => { e.target.style.background = 'var(--bg-hover)'; e.target.style.borderColor = 'var(--border-light)'; }} onMouseLeave={(e) => { e.target.style.background = 'var(--bg-tertiary)'; e.target.style.borderColor = 'var(--border-color)'; }}>
             Back to Login
           </Link>
           {/* Theme Toggle */}
           <button
-            className="theme-toggle"
+            className="w-10 h-10 rounded-lg-custom border flex items-center justify-center cursor-pointer transition-all duration-200"
+            style={{ background: 'var(--bg-tertiary)', borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
+            onMouseEnter={(e) => { e.target.style.background = 'var(--bg-hover)'; e.target.style.color = '#f97316'; e.target.style.borderColor = 'var(--border-light)'; }}
+            onMouseLeave={(e) => { e.target.style.background = 'var(--bg-tertiary)'; e.target.style.color = 'var(--text-secondary)'; e.target.style.borderColor = 'var(--border-color)'; }}
             onClick={() => setDarkMode((prev) => !prev)}
             title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
           >
@@ -174,68 +176,81 @@ export default function VerifyEmail() {
       </header>
 
       {/* Main Content */}
-      <main className="main-content">
-        <div className="auth-container">
-          <div className="auth-card">
-            <div className="auth-header">
-              <div className="auth-icon">
+      <main className="flex items-center justify-center min-h-[calc(100vh-80px)] p-8">
+        <div className="w-full max-w-[420px]">
+          <div className="border rounded-2xl p-10 shadow-lg-dark" style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}>
+            <div className="text-center mb-8">
+              <div className="w-16 h-16 mx-auto mb-4 bg-gradient-primary rounded-xl-custom flex items-center justify-center text-white shadow-glow">
                 <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
                   <polyline points="22,6 12,13 2,6" />
                 </svg>
               </div>
-              <h2 className="auth-title">Verify Your Email</h2>
-              <p className="auth-subtitle">
+              <h2 className="text-[1.75rem] font-bold tracking-tight mb-2 m-0" style={{ color: 'var(--text-primary)' }}>Verify Your Email</h2>
+              <p className="text-[0.9375rem] m-0 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
                 We've sent a 6-digit verification code to your email. Please enter it below to verify your account.
               </p>
             </div>
 
-            <form onSubmit={handleVerify} className="auth-form">
-              <div className="form-group">
-                <label htmlFor="email" className="form-label">
+            <form onSubmit={handleVerify} className="flex flex-col gap-5">
+              <div className="mb-0">
+                <label htmlFor="email" className="block text-[0.8125rem] font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
                   Email Address
                 </label>
                 <input
                   type="email"
                   id="email"
-                  className="form-input"
+                  className="w-full py-3 px-4 rounded-lg-custom text-[0.9375rem] transition-all duration-200 border focus:outline-none focus:shadow-[0_0_0_3px_rgba(249,115,22,0.15)]"
+                  style={{ background: 'var(--bg-input)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
                   placeholder="Enter your email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  onFocus={(e) => e.target.style.borderColor = '#f97316'}
+                  onBlur={(e) => e.target.style.borderColor = 'var(--border-color)'}
                   required
                   autoComplete="email"
                 />
               </div>
 
-              <div className="form-group">
-                <label htmlFor="code" className="form-label">
+              <div className="mb-0">
+                <label htmlFor="code" className="block text-[0.8125rem] font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
                   Verification Code
                 </label>
                 <input
                   type="text"
                   id="code"
-                  className="form-input"
+                  className="w-full py-3 px-4 rounded-lg-custom transition-all duration-200 border focus:outline-none focus:shadow-[0_0_0_3px_rgba(249,115,22,0.15)]"
+                  style={{ background: 'var(--bg-input)', borderColor: 'var(--border-color)', color: 'var(--text-primary)', fontSize: '1.2rem', letterSpacing: '0.5rem', textAlign: 'center' }}
                   placeholder="Enter 6-digit code"
                   value={code}
                   onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  onFocus={(e) => e.target.style.borderColor = '#f97316'}
+                  onBlur={(e) => e.target.style.borderColor = 'var(--border-color)'}
                   required
                   maxLength={6}
                   autoComplete="off"
-                  style={{ fontSize: "1.2rem", letterSpacing: "0.5rem", textAlign: "center" }}
                 />
               </div>
 
-              <button type="submit" className="btn btn-primary btn-fullwidth" disabled={loading}>
+              <button type="submit" className="w-full justify-center py-3.5 px-6 text-base inline-flex items-center gap-2 font-semibold rounded-lg-custom cursor-pointer transition-all duration-200 border-none bg-gradient-primary text-white hover:-translate-y-px hover:shadow-glow mt-2 disabled:opacity-50 disabled:cursor-not-allowed" disabled={loading}>
                 Verify Email
               </button>
 
-              <div className="auth-divider">
-                <span>Didn't receive the code?</span>
+              <div className="relative text-center my-4">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t" style={{ borderColor: 'var(--border-color)' }}></div>
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="px-2 text-[0.8125rem]" style={{ background: 'var(--bg-card)', color: 'var(--text-muted)' }}>Didn't receive the code?</span>
+                </div>
               </div>
 
               <button
                 type="button"
-                className="btn btn-secondary btn-fullwidth"
+                className="w-full justify-center py-3.5 px-6 text-base inline-flex items-center gap-2 font-semibold rounded-lg-custom cursor-pointer transition-all duration-200 border disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ background: 'var(--bg-tertiary)', color: 'var(--text-primary)', borderColor: 'var(--border-color)' }}
+                onMouseEnter={(e) => !loading && (e.target.style.background = 'var(--bg-hover)', e.target.style.borderColor = 'var(--border-light)')}
+                onMouseLeave={(e) => !loading && (e.target.style.background = 'var(--bg-tertiary)', e.target.style.borderColor = 'var(--border-color)')}
                 onClick={handleResendCode}
                 disabled={loading}
               >
@@ -248,9 +263,9 @@ export default function VerifyEmail() {
               </button>
             </form>
 
-            <div className="auth-footer">
-              <p>
-                Already verified? <Link to="/login" className="auth-link">Login here</Link>
+            <div className="text-center mt-6 pt-6 border-t" style={{ borderColor: 'var(--border-color)' }}>
+              <p className="m-0 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                Already verified? <Link to="/login" className="text-accent-primary font-semibold no-underline transition-all duration-200 hover:text-accent-primary-hover hover:underline">Login here</Link>
               </p>
             </div>
           </div>
