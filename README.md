@@ -503,6 +503,7 @@ Ticket remains viewable but cannot be reopened
 - [ ] Refresh token mechanism
 - [ ] Ticket reopening (intentionally excluded)
 
+<<<<<<< HEAD
 ## 🐛 Known Issues
 
 - **Orchestrator Error**: Intent classification shows authentication error but uses fallback successfully
@@ -529,6 +530,8 @@ Ticket remains viewable but cannot be reopened
 **Issue**: CORS errors
 - **Solution**: Ensure backend is running on port 4000 and frontend on port 3000
 
+=======
+>>>>>>> 40370709ddc53b9dcbc9c07fc87ccc19d310ebbd
 ## 🤝 Contributing
 
 This is a portfolio project by Muhammad Asad Rafique. Feel free to fork and customize for your own use!
