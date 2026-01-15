@@ -6,6 +6,7 @@ import { db } from "../db/db.js";
 import { sendTicketEmail, sendAgentReplyEmail, sendTicketClosureEmail } from "../utils/email.js";
 import { ticketCreationLimiter, adminActionLimiter } from "../middleware/rateLimit.js";
 import { findSimilarTicket } from "../utils/similarity.js";
+import { upload, handleUploadError } from "../middleware/upload.js";
 const router = express.Router();
 
 // GET all tickets with messages (with pagination and search)
@@ -62,15 +63,47 @@ router.get("/", (req, res) => {
       .prepare("SELECT * FROM messages WHERE ticket_id = ? ORDER BY datetime(created_at) ASC")
       .all(ticket.id);
 
+    // Get all attachments for this ticket
+    const allAttachments = db
+      .prepare("SELECT * FROM attachments WHERE ticket_id = ? ORDER BY created_at ASC")
+      .all(ticket.id);
+
     return {
       ...ticket,
-      messages: messages.map((m) => ({
-        id: m.id,
-        sender: m.sender,
-        content: m.content,
-        reasoning: m.reasoning || "",
-        status: m.status || "sent",
-        created_at: m.created_at,
+      messages: messages.map((m) => {
+        // Find attachments for this specific message (or ticket-level attachments if message_id is null)
+        const messageAttachments = allAttachments.filter(
+          (a) => a.message_id === m.id || (a.message_id === null && m.sender === "guest")
+        );
+
+        return {
+          id: m.id,
+          sender: m.sender,
+          content: m.content,
+          reasoning: m.reasoning || "",
+          status: m.status || "sent",
+          created_at: m.created_at,
+          attachments: messageAttachments.map((a) => ({
+            id: a.id,
+            message_id: a.message_id,
+            original_name: a.original_name,
+            stored_name: a.stored_name,
+            mime_type: a.mime_type,
+            size: a.size,
+            path: a.path,
+            created_at: a.created_at,
+          })),
+        };
+      }),
+      attachments: allAttachments.map((a) => ({
+        id: a.id,
+        message_id: a.message_id,
+        original_name: a.original_name,
+        stored_name: a.stored_name,
+        mime_type: a.mime_type,
+        size: a.size,
+        path: a.path,
+        created_at: a.created_at,
       })),
     };
   });
@@ -86,8 +119,43 @@ router.get("/", (req, res) => {
   });
 });
 
+// GET attachments for a specific ticket
+router.get("/:ticketId/attachments", (req, res) => {
+  const { ticketId } = req.params;
+
+  try {
+    // Verify ticket exists
+    const ticket = db.prepare("SELECT * FROM tickets WHERE id = ?").get(ticketId);
+    if (!ticket) {
+      return res.status(404).json({ error: "Ticket not found" });
+    }
+
+    // Get all attachments for this ticket
+    const attachments = db
+      .prepare("SELECT * FROM attachments WHERE ticket_id = ? ORDER BY created_at ASC")
+      .all(ticketId);
+
+    res.json({
+      ticketId,
+      attachments: attachments.map((a) => ({
+        id: a.id,
+        message_id: a.message_id,
+        original_name: a.original_name,
+        stored_name: a.stored_name,
+        mime_type: a.mime_type,
+        size: a.size,
+        path: a.path,
+        created_at: a.created_at,
+      })),
+    });
+  } catch (err) {
+    console.error("Error fetching attachments:", err);
+    res.status(500).json({ error: "Failed to fetch attachments" });
+  }
+});
+
 // POST new ticket
-router.post("/", ticketCreationLimiter, async (req, res) => {
+router.post("/", ticketCreationLimiter, upload.array("attachments", 5), handleUploadError, async (req, res) => {
   const { email, message } = req.body;
   if (!email || !message) {
     return res.status(400).json({ error: "Email & message required" });
@@ -106,6 +174,28 @@ router.post("/", ticketCreationLimiter, async (req, res) => {
     db.prepare(
       "INSERT INTO messages (id, ticket_id, sender, content, status) VALUES (?, ?, ?, ?, ?)"
     ).run(messageId, similarTicket.id, "guest", message, "sent");
+
+    // Save attachments if any (associated with the new message)
+    if (req.files && req.files.length > 0) {
+      for (const file of req.files) {
+        const attachmentId = uuid();
+        const relativePath = `/uploads/${file.filename}`;
+
+        db.prepare(
+          "INSERT INTO attachments (id, ticket_id, message_id, original_name, stored_name, mime_type, size, path) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+        ).run(
+          attachmentId,
+          similarTicket.id,
+          messageId, // Link attachment to the specific message
+          file.originalname,
+          file.filename,
+          file.mimetype,
+          file.size,
+          relativePath
+        );
+      }
+      console.log(`📎 Saved ${req.files.length} attachment(s) to merged ticket`);
+    }
 
     // Update ticket status to "open" if it was "answered"
     if (similarTicket.status === "answered") {
@@ -156,6 +246,27 @@ router.post("/", ticketCreationLimiter, async (req, res) => {
   db.prepare(
     "INSERT INTO messages (id, ticket_id, sender, content, status) VALUES (?, ?, ?, ?, ?)"
   ).run(uuid(), ticketId, "guest", message, "sent");
+
+  // Save attachments if any
+  if (req.files && req.files.length > 0) {
+    for (const file of req.files) {
+      const attachmentId = uuid();
+      const relativePath = `/uploads/${file.filename}`;
+
+      db.prepare(
+        "INSERT INTO attachments (id, ticket_id, message_id, original_name, stored_name, mime_type, size, path) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+      ).run(
+        attachmentId,
+        ticketId,
+        null, // message_id is null for initial ticket attachments
+        file.originalname,
+        file.filename,
+        file.mimetype,
+        file.size,
+        relativePath
+      );
+    }
+  }
 
   try {
     // Process message with agent

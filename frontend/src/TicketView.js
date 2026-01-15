@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import axios from "axios";
 import Modal from "./components/Modal";
+import FilePreview from "./components/FilePreview";
 
 export default function TicketView() {
   const { ticketId } = useParams();
@@ -411,6 +412,12 @@ export default function TicketView() {
                         {msg.sender === "guest" ? "You" : "Support Agent"}
                       </div>
                       <div className="text-[0.9375rem] leading-relaxed" style={{ color: 'var(--text-primary)' }}>{msg.content}</div>
+
+                      {/* Attachments */}
+                      {msg.attachments && msg.attachments.length > 0 && (
+                        <FilePreview attachments={msg.attachments} />
+                      )}
+
                       {msg.sender === "agent" && msg.reasoning && (
                         <div className="text-[0.8125rem] italic mt-2 pt-2 border-t" style={{ color: 'var(--text-muted)', borderColor: 'var(--border-color)' }}>
                           {msg.reasoning}

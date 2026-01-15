@@ -1,6 +1,7 @@
 import dotenv from "dotenv";
 import express from "express";
 import cors from "cors";
+import path from "path";
 
 import ticketsRouter from "./routes/tickets.js";
 import authRouter from "./routes/auth.js";
@@ -14,6 +15,10 @@ dotenv.config();
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Serve static files from uploads directory
+const uploadsPath = path.join(process.cwd(), "backend", "uploads");
+app.use("/uploads", express.static(uploadsPath));
 
 // Apply general rate limiting to all API routes
 app.use("/api/", apiLimiter);

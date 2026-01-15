@@ -2,9 +2,12 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import Modal from "./components/Modal";
+import FileUpload from "./components/FileUpload";
+import FilePreview from "./components/FilePreview";
 
 function App() {
   const [message, setMessage] = useState("");
+  const [selectedFiles, setSelectedFiles] = useState([]);
   const [tickets, setTickets] = useState([]);
   const [replyText, setReplyText] = useState({});
   const [loading, setLoading] = useState(false);
@@ -31,9 +34,21 @@ function App() {
     setLoadingAction('submit');
     try {
       const userEmail = localStorage.getItem("userEmail");
-      const res = await axios.post("http://localhost:4000/tickets", {
-        email: userEmail,
-        message,
+
+      // Create FormData for multipart/form-data
+      const formData = new FormData();
+      formData.append("email", userEmail);
+      formData.append("message", message);
+
+      // Append files if any
+      selectedFiles.forEach((file) => {
+        formData.append("attachments", file);
+      });
+
+      const res = await axios.post("http://localhost:4000/tickets", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
       });
 
       if (res.data.merged) {
@@ -65,6 +80,7 @@ function App() {
       }
 
       setMessage("");
+      setSelectedFiles([]);
       await fetchTickets();
     } catch (err) {
       console.error(err);
@@ -309,30 +325,36 @@ function App() {
         {/* Ticket Form */}
         <form className="rounded-xl-custom p-6 mb-8 border shadow-md-dark" style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }} onSubmit={submitTicket}>
           <h2 className="text-base font-semibold mb-5" style={{ color: 'var(--text-primary)' }}>Submit a Support Request</h2>
-          <div className="flex gap-4 flex-wrap items-end">
-            <div className="flex-[2] min-w-[300px]">
-              <label className="block text-[0.8125rem] font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>How can we help?</label>
-              <input
-                type="text"
-                className="w-full py-3 px-4 rounded-lg-custom text-[0.9375rem] transition-all duration-200 border focus:outline-none focus:shadow-[0_0_0_3px_rgba(249,115,22,0.15)]"
-                style={{ background: 'var(--bg-input)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
-                placeholder="Describe your issue..."
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                onFocus={(e) => e.target.style.borderColor = '#f97316'}
-                onBlur={(e) => e.target.style.borderColor = 'var(--border-color)'}
-                required
-              />
-            </div>
-            <div className="flex-[0_0_auto]">
-              <button type="submit" className="inline-flex items-center justify-center gap-2 px-5 py-3 text-sm font-semibold rounded-lg-custom cursor-pointer transition-all duration-200 border-none bg-gradient-primary text-white hover:-translate-y-px hover:shadow-glow">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="22" y1="2" x2="11" y2="13" />
-                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                </svg>
-                Submit
-              </button>
-            </div>
+          <div className="mb-4">
+            <label className="block text-[0.8125rem] font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>How can we help?</label>
+            <input
+              type="text"
+              className="w-full py-3 px-4 rounded-lg-custom text-[0.9375rem] transition-all duration-200 border focus:outline-none focus:shadow-[0_0_0_3px_rgba(249,115,22,0.15)]"
+              style={{ background: 'var(--bg-input)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+              placeholder="Describe your issue..."
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              onFocus={(e) => e.target.style.borderColor = '#f97316'}
+              onBlur={(e) => e.target.style.borderColor = 'var(--border-color)'}
+              required
+            />
+          </div>
+          <div className="mb-4">
+            <label className="block text-[0.8125rem] font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Attachments (optional)</label>
+            <FileUpload
+              onFilesSelected={setSelectedFiles}
+              maxFiles={5}
+              disabled={loading}
+            />
+          </div>
+          <div className="flex justify-end">
+            <button type="submit" className="inline-flex items-center justify-center gap-2 px-5 py-3 text-sm font-semibold rounded-lg-custom cursor-pointer transition-all duration-200 border-none bg-gradient-primary text-white hover:-translate-y-px hover:shadow-glow" disabled={loading}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="22" y1="2" x2="11" y2="13" />
+                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+              </svg>
+              Submit
+            </button>
           </div>
         </form>
 
@@ -464,6 +486,11 @@ function App() {
                               {msg.sender === "guest" ? "You" : "Support Agent"}
                             </div>
                             <div className="text-[0.9375rem] leading-relaxed" style={{ color: 'var(--text-primary)' }}>{msg.content}</div>
+
+                            {/* Attachments */}
+                            {msg.attachments && msg.attachments.length > 0 && (
+                              <FilePreview attachments={msg.attachments} />
+                            )}
 
                             {/* Reasoning (hidden for guest view) */}
                             {msg.sender === "agent" && msg.reasoning && (

@@ -130,4 +130,21 @@ try {
   }
 }
 
+// Attachments table
+db.prepare(`
+CREATE TABLE IF NOT EXISTS attachments (
+  id TEXT PRIMARY KEY,
+  ticket_id TEXT NOT NULL,
+  message_id TEXT,
+  original_name TEXT NOT NULL,
+  stored_name TEXT NOT NULL,
+  mime_type TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  path TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(ticket_id) REFERENCES tickets(id),
+  FOREIGN KEY(message_id) REFERENCES messages(id)
+)
+`).run();
+
 console.log("Database initialized at", dbPath);
