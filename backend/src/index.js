@@ -1,4 +1,6 @@
 import dotenv from "dotenv";
+dotenv.config();
+
 import express from "express";
 import cors from "cors";
 import path from "path";
@@ -9,8 +11,7 @@ import './utils/escalator.js';
 
 import { db } from "./db/db.js";
 import { apiLimiter } from "./middleware/rateLimit.js";
-
-dotenv.config();
+import { initializeKnowledgeBase } from "./rag/knowledgeBase.js";
 
 const app = express();
 app.use(cors());
@@ -34,6 +35,31 @@ app.use("/auth", authRouter);
 app.use("/tickets", ticketsRouter);
 
 const PORT = 4000;
-app.listen(PORT, () => {
-  console.log(`Backend running on port ${PORT}`);
-});
+
+// Initialize RAG knowledge base, then start server
+async function startServer() {
+  try {
+    console.log("🚀 Starting server...");
+
+    // Initialize RAG knowledge base
+    console.log("📚 Initializing RAG knowledge base...");
+    await initializeKnowledgeBase();
+    console.log("✅ RAG knowledge base ready");
+
+    // Start Express server
+    app.listen(PORT, () => {
+      console.log(`✅ Backend running on port ${PORT}`);
+      console.log(`📡 API available at http://localhost:${PORT}`);
+    });
+  } catch (error) {
+    console.error("❌ Server startup failed:", error.message);
+    console.log("⚠️ Starting server without RAG...");
+
+    // Start server anyway without RAG
+    app.listen(PORT, () => {
+      console.log(`✅ Backend running on port ${PORT} (RAG disabled)`);
+    });
+  }
+}
+
+startServer();

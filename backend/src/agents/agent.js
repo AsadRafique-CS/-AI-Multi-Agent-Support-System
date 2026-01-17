@@ -1,8 +1,16 @@
 import Anthropic from "@anthropic-ai/sdk";
+import {
+  retrieveRefundContext,
+  retrieveTechnicalContext,
+  retrieveGeneralContext,
+} from "../rag/retriever.js";
 
 // Base configuration for all agents
 const MODEL = "claude-3-haiku-20240307"; // Fast and cost-effective for support
 const MAX_TOKENS = 500;
+
+// RAG configuration
+const USE_RAG = true; // Set to false to disable RAG
 
 // Lazy initialize Anthropic client (so dotenv loads first)
 let anthropic = null;
@@ -13,6 +21,21 @@ function getAnthropic() {
     });
   }
   return anthropic;
+}
+
+/**
+ * Helper to augment system prompt with RAG context
+ */
+function augmentPromptWithContext(basePrompt, ragContext) {
+  if (!ragContext || !ragContext.context) {
+    return basePrompt;
+  }
+
+  return `${basePrompt}
+
+${ragContext.context}
+
+Use the above knowledge base context to provide accurate, grounded responses. If the context doesn't contain relevant information, rely on your guidelines.`;
 }
 
 // ==================== REFUND AGENT ====================
@@ -43,10 +66,30 @@ export async function RefundAgent(message) {
 
     console.log("🤖 RefundAgent: Calling Claude API...");
 
+    // RAG: Retrieve relevant context from knowledge base
+    let systemPrompt = REFUND_SYSTEM_PROMPT;
+    let ragUsed = false;
+    let retrievedDocs = [];
+
+    if (USE_RAG) {
+      try {
+        console.log("📚 RefundAgent: Retrieving RAG context...");
+        const ragResult = await retrieveRefundContext(message);
+        if (ragResult.success && ragResult.context) {
+          systemPrompt = augmentPromptWithContext(REFUND_SYSTEM_PROMPT, ragResult);
+          ragUsed = true;
+          retrievedDocs = ragResult.documents || [];
+          console.log(`✅ RefundAgent: RAG context added (${retrievedDocs.length} docs)`);
+        }
+      } catch (ragError) {
+        console.warn("⚠️ RefundAgent: RAG failed, continuing without context:", ragError.message);
+      }
+    }
+
     const response = await getAnthropic().messages.create({
       model: MODEL,
       max_tokens: MAX_TOKENS,
-      system: REFUND_SYSTEM_PROMPT,
+      system: systemPrompt,
       messages: [
         {
           role: "user",
@@ -59,8 +102,12 @@ export async function RefundAgent(message) {
 
     return {
       response: response.content[0].text,
-      reasoning: "RefundAgent processed refund/payment inquiry via Claude AI",
-      confidence: 0.9,
+      reasoning: ragUsed
+        ? `RefundAgent processed refund/payment inquiry via Claude AI with RAG (${retrievedDocs.length} docs)`
+        : "RefundAgent processed refund/payment inquiry via Claude AI",
+      confidence: ragUsed ? 0.95 : 0.9,
+      ragUsed,
+      retrievedDocs: retrievedDocs.map((d) => d.metadata?.title || d.id),
     };
   } catch (err) {
     console.error("❌ RefundAgent error:", err.message);
@@ -107,10 +154,30 @@ export async function TechnicalAgent(message) {
 
     console.log("🤖 TechnicalAgent: Calling Claude API...");
 
+    // RAG: Retrieve relevant context from knowledge base
+    let systemPrompt = TECHNICAL_SYSTEM_PROMPT;
+    let ragUsed = false;
+    let retrievedDocs = [];
+
+    if (USE_RAG) {
+      try {
+        console.log("📚 TechnicalAgent: Retrieving RAG context...");
+        const ragResult = await retrieveTechnicalContext(message);
+        if (ragResult.success && ragResult.context) {
+          systemPrompt = augmentPromptWithContext(TECHNICAL_SYSTEM_PROMPT, ragResult);
+          ragUsed = true;
+          retrievedDocs = ragResult.documents || [];
+          console.log(`✅ TechnicalAgent: RAG context added (${retrievedDocs.length} docs)`);
+        }
+      } catch (ragError) {
+        console.warn("⚠️ TechnicalAgent: RAG failed, continuing without context:", ragError.message);
+      }
+    }
+
     const response = await getAnthropic().messages.create({
       model: MODEL,
       max_tokens: MAX_TOKENS,
-      system: TECHNICAL_SYSTEM_PROMPT,
+      system: systemPrompt,
       messages: [
         {
           role: "user",
@@ -123,8 +190,12 @@ export async function TechnicalAgent(message) {
 
     return {
       response: response.content[0].text,
-      reasoning: "TechnicalAgent processed technical inquiry via Claude AI",
-      confidence: 0.9,
+      reasoning: ragUsed
+        ? `TechnicalAgent processed technical inquiry via Claude AI with RAG (${retrievedDocs.length} docs)`
+        : "TechnicalAgent processed technical inquiry via Claude AI",
+      confidence: ragUsed ? 0.95 : 0.9,
+      ragUsed,
+      retrievedDocs: retrievedDocs.map((d) => d.metadata?.title || d.id),
     };
   } catch (err) {
     console.error("❌ TechnicalAgent error:", err.message);
@@ -171,10 +242,30 @@ export async function GeneralAgent(message) {
 
     console.log("🤖 GeneralAgent: Calling Claude API...");
 
+    // RAG: Retrieve relevant context from knowledge base
+    let systemPrompt = GENERAL_SYSTEM_PROMPT;
+    let ragUsed = false;
+    let retrievedDocs = [];
+
+    if (USE_RAG) {
+      try {
+        console.log("📚 GeneralAgent: Retrieving RAG context...");
+        const ragResult = await retrieveGeneralContext(message);
+        if (ragResult.success && ragResult.context) {
+          systemPrompt = augmentPromptWithContext(GENERAL_SYSTEM_PROMPT, ragResult);
+          ragUsed = true;
+          retrievedDocs = ragResult.documents || [];
+          console.log(`✅ GeneralAgent: RAG context added (${retrievedDocs.length} docs)`);
+        }
+      } catch (ragError) {
+        console.warn("⚠️ GeneralAgent: RAG failed, continuing without context:", ragError.message);
+      }
+    }
+
     const response = await getAnthropic().messages.create({
       model: MODEL,
       max_tokens: MAX_TOKENS,
-      system: GENERAL_SYSTEM_PROMPT,
+      system: systemPrompt,
       messages: [
         {
           role: "user",
@@ -187,8 +278,12 @@ export async function GeneralAgent(message) {
 
     return {
       response: response.content[0].text,
-      reasoning: "GeneralAgent processed general inquiry via Claude AI",
-      confidence: 0.85,
+      reasoning: ragUsed
+        ? `GeneralAgent processed general inquiry via Claude AI with RAG (${retrievedDocs.length} docs)`
+        : "GeneralAgent processed general inquiry via Claude AI",
+      confidence: ragUsed ? 0.9 : 0.85,
+      ragUsed,
+      retrievedDocs: retrievedDocs.map((d) => d.metadata?.title || d.id),
     };
   } catch (err) {
     console.error("❌ GeneralAgent error:", err.message);
